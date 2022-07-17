@@ -1,14 +1,13 @@
 mod codegen;
+mod parser;
 mod syntax;
 
 use codegen::codegen;
-use syntax::desugars::*;
-use syntax::Exp::*;
+use parser::parse;
 
-pub fn compile(_contents: &str) -> Vec<u8> {
+pub fn compile(contents: &str) -> Result<Vec<u8>, Vec<String>> {
     // parse and etc..
-    let program = d_add(Num(1), Num(2));
-    // generate binary code
-    let bytes = codegen(program);
-    return bytes;
+    // let program = parse("+\n \n \n  // hello     10.5 + \n  10 ").unwrap();
+    let program = parse(contents)?;
+    return Ok(codegen(program));
 }

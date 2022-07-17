@@ -55,5 +55,48 @@ pub fn codegen_exp(f: &mut Function, e: Exp) {
             codegen_exp(f, *r);
             f.instruction(Instruction::I32Add)
         }
+        Exp::Mult(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32Mul)
+        }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::syntax::desugars::*;
+    use pretty_assertions::assert_eq;
+    use wasmprinter::print_bytes;
+    use Exp::*;
+
+    // format code like wasmprinter
+    fn code_format(body: &str) -> String {
+        let body: Vec<&str> = body.split("\n").collect();
+        [
+            "(module\n  \
+            (type (;0;) (func (result i32)))\n  \
+            (func (;0;) (type 0) (result i32)\n    ",
+            body.join("\n    ").as_str(),
+            "\n  )\n  \
+            (export \"main\" (func 0))\n\
+        )",
+        ]
+        .concat()
+    }
+
+    #[test]
+    fn add() {
+        assert_eq!(
+            print_bytes(&codegen(d_add(Num(10), d_add(Num(20), Num(5))))).unwrap(),
+            code_format(
+                "i32.const 10\n\
+                i32.const 20\n\
+                i32.const 5\n\
+                i32.add\n\
+                i32.add"
+            )
+        );
+    }
 }

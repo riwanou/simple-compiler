@@ -1,30 +1,46 @@
 use compiler_rust::compile;
+use std::fs::File;
+use std::io::prelude::Read;
 use wasmi::{ImportsBuilder, ModuleInstance, NopExternals, RuntimeValue};
 
 fn main() {
+    // read from file
+    let mut file = File::open("program.lg").expect("failed to open file");
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .expect("failed to read file as string");
+
     // compile file content
-    let wasm_binary = compile("program string");
+    match compile(&contents) {
+        Ok(wasm_binary) => {
+            // Load wasm binary and prepare it for instantiation.
+            let module = wasmi::Module::from_buffer(&wasm_binary).expect("failed to load wasm");
 
-    // Load wasm binary and prepare it for instantiation.
-    let module = wasmi::Module::from_buffer(&wasm_binary).expect("failed to load wasm");
+            // Instantiate a module with empty imports and
+            // assert that there is no `start` function.
+            let instance = ModuleInstance::new(&module, &ImportsBuilder::default())
+                .expect("failed to instantiate wasm module")
+                .assert_no_start();
 
-    // Instantiate a module with empty imports and
-    // assert that there is no `start` function.
-    let instance = ModuleInstance::new(&module, &ImportsBuilder::default())
-        .expect("failed to instantiate wasm module")
-        .assert_no_start();
+            // Finally, invoke the exported function "test" with no parameters
+            // and empty external function executor.
+            let result = instance
+                .invoke_export("main", &[], &mut NopExternals)
+                .expect("failed to execute export");
 
-    // Finally, invoke the exported function "test" with no parameters
-    // and empty external function executor.
-    let result = instance
-        .invoke_export("main", &[], &mut NopExternals)
-        .expect("failed to execute export");
-
-    match result {
-        Some(res) => match res {
-            RuntimeValue::I32(n) => println!("{:?}", n),
-            _ => println!("{:?}", res),
-        },
-        None => println!("failed to run wasm file"),
+            match result {
+                Some(res) => match res {
+                    RuntimeValue::I32(n) => println!("{:?}", n),
+                    _ => println!("{:?}", res),
+                },
+                None => println!("failed to run wasm file"),
+            }
+        }
+        Err(errors) => {
+            println!("error: could not compile `program.lg`:");
+            for err in errors {
+                println!("--> {}", err);
+            }
+        }
     }
 }

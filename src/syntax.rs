@@ -5,6 +5,7 @@ pub enum Exp {
     Bool(bool),
     Num(i32),
     Add(Box<Exp>, Box<Exp>),
+    Mult(Box<Exp>, Box<Exp>),
 }
 
 // desugars methods to avoid box boilerplates
