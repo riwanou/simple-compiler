@@ -11,9 +11,15 @@ pub enum Exp {
 // desugars methods to avoid box boilerplates
 pub mod desugars {
     use super::*;
+
     // expressions
     #[allow(dead_code)]
     pub fn d_add(l: Exp, r: Exp) -> Exp {
         Exp::Add(Box::new(l), Box::new(r))
+    }
+
+    #[allow(dead_code)]
+    pub fn d_mult(l: Exp, r: Exp) -> Exp {
+        Exp::Mult(Box::new(l), Box::new(r))
     }
 }

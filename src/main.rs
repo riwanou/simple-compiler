@@ -5,7 +5,7 @@ use wasmi::{ImportsBuilder, ModuleInstance, NopExternals, RuntimeValue};
 
 fn main() {
     // read from file
-    let mut file = File::open("program.lg").expect("failed to open file");
+    let mut file = File::open("files/numeric.lg").expect("failed to open file");
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .expect("failed to read file as string");
