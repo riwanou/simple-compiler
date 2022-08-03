@@ -65,6 +65,11 @@ pub fn codegen_exp(f: &mut Function, e: Exp) {
             codegen_exp(f, *r);
             f.instruction(Instruction::I32Mul)
         }
+        Exp::Div(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32DivS)
+        }
     };
 }
 

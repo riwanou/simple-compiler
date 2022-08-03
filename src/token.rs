@@ -1,6 +1,19 @@
 use crate::scanner::Scanner;
 use std::fmt;
 
+/*
+    expression -> literal
+                | binary
+                | grouping;
+
+    literal -> NUMBER;
+    grouping -> "(" expression ")";
+    binary -> expression operator expression
+    operator -> "+" | "-" | "*" | "+"
+
+    comments -> "#"
+*/
+
 #[derive(Debug, Clone)]
 pub enum TokenType {
     // Literals
@@ -9,6 +22,10 @@ pub enum TokenType {
     Add,
     Sub,
     Mult,
+    Div,
+    // Grouping
+    LeftParen,
+    RightParen,
     // Parser
     Error(String),
 }
@@ -21,6 +38,7 @@ pub struct Token {
 
 pub mod desugar {
     use super::*;
+
     // create token with information
     pub fn make_token(token_type: TokenType, scanner: &Scanner) -> Token {
         Token {
@@ -29,6 +47,7 @@ pub mod desugar {
             line: scanner.line,
         }
     }
+
     // create error token container error message
     pub fn error_token(msg: &str, scanner: &Scanner) -> Token {
         Token {

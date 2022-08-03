@@ -37,9 +37,9 @@ fn main() {
             }
         }
         Err(errors) => {
-            println!("error: could not compile `program.lg`:");
+            println!("error: could not compile `numeric.lg`:");
             for err in errors {
-                println!("--> {}", err);
+                println!("-> {}", err);
             }
         }
     }

@@ -81,13 +81,16 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 // comments, empty lines, spaces, etc..
                 ' ' | '\r' | '\t' => (),
                 '\n' => scanner.new_line(),
-                '/' => scan_comment(&mut scanner),
+                '#' => scan_comment(&mut scanner),
 
                 // actual program
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
                 '+' => tokens.push(make_token(TokenType::Add, &scanner)),
                 '-' => tokens.push(make_token(TokenType::Sub, &scanner)),
                 '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
+                '/' => tokens.push(make_token(TokenType::Div, &scanner)),
+                '(' => tokens.push(make_token(TokenType::LeftParen, &scanner)),
+                ')' => tokens.push(make_token(TokenType::RightParen, &scanner)),
 
                 // erors
                 _ => {
@@ -109,12 +112,10 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
 // skip comments
 #[allow(dead_code)]
 fn scan_comment(scanner: &mut Scanner) {
-    if let Some('/') = scanner.peek() {
-        while let Some(c) = scanner.next() {
-            // exit line comment on line break
-            if c == '\n' {
-                return;
-            }
+    while let Some(c) = scanner.next() {
+        // exit line comment on line break
+        if c == '\n' {
+            return;
         }
     }
 }
@@ -138,7 +139,7 @@ mod tests {
     fn basic() {
         println!(
             "{:?}",
-            scan("230 - 10 \n\n\n // comments \n // comments \n 10 + 2 * 3 + 10")
+            scan("230 - 10 \n\n\n # comments \n # comments \n (10 + 2) * 3 + 10")
         );
     }
 }

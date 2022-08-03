@@ -1,2 +1,4 @@
-// numeric operations file
-1 * 2 * 3 + 10 * 2 + 4 - 5
+# numeric operations file
+# 1 * 2 * 3 + 10 * 2 * 5 + 4
+# 1 * 2 * 3 + 10 * 2 - 5
+((1 + 2) * 2 + 2) / 2
