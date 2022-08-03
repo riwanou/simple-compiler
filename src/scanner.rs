@@ -77,26 +77,24 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
     loop {
         match scanner.next() {
             None => break,
-            Some(c) => {
-                match c {
-                    // comments, empty lines, spaces, etc..
-                    ' ' | '\r' | '\t' => (),
-                    '\n' => scanner.new_line(),
-                    '/' => scan_comment(&mut scanner),
+            Some(c) => match c {
+                // comments, empty lines, spaces, etc..
+                ' ' | '\r' | '\t' => (),
+                '\n' => scanner.new_line(),
+                '/' => scan_comment(&mut scanner),
 
-                    // actual program
-                    '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
-                    '+' => tokens.push(make_token(TokenType::Add, &scanner)),
-                    '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
+                // actual program
+                '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
+                '+' => tokens.push(make_token(TokenType::Add, &scanner)),
+                '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
 
-                    // erors
-                    _ => {
-                        let token = error_token(&format!("Unexpected character: {}", c), &scanner);
-                        tokens.push(token);
-                        errors = true;
-                    }
+                // erors
+                _ => {
+                    let token = error_token(&format!("Unexpected character: {}", c), &scanner);
+                    tokens.push(token);
+                    errors = true;
                 }
-            }
+            },
         };
     }
 

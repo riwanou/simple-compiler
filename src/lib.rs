@@ -9,9 +9,10 @@ use parser::parse;
 use scanner::scan;
 
 pub fn compile(contents: &str) -> Result<Vec<u8>, Vec<String>> {
-    // parse and etc..
-    // let program = parse("+\n \n \n  // hello     10.5 + \n  10 ").unwrap();
+    // scan string and generate tokens
     let tokens = scan(contents)?;
-    let program = parse(&tokens);
+    // parse the tokens
+    let program = parse(&tokens).expect("error during parsing");
+    // generate program
     return Ok(codegen(program));
 }
