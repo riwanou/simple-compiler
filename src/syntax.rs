@@ -4,6 +4,7 @@
 pub enum Exp {
     Bool(bool),
     Num(i32),
+    // Binary op
     Add(Box<Exp>, Box<Exp>),
     Sub(Box<Exp>, Box<Exp>),
     Mult(Box<Exp>, Box<Exp>),

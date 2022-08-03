@@ -37,6 +37,24 @@ impl Scanner<'_> {
         self.iter.next()
     }
 
+    fn eat(&mut self, text: &str, correct_token: &str) -> Result<(), Token> {
+        for c in text.chars() {
+            match self.next() {
+                Some(current) if current == c => (),
+                _ => {
+                    return Err(error_token(
+                        &format!(
+                            "Unexpected character: {}, did you mean {}?",
+                            c, correct_token
+                        ),
+                        self,
+                    ))
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn peek(&mut self) -> Option<&char> {
         self.iter.peek()
     }
@@ -84,7 +102,11 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 '#' => scan_comment(&mut scanner),
 
                 // actual program
+                // literal
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
+                't' => tokens.push(scan_true(&mut scanner)),
+                'f' => tokens.push(scan_false(&mut scanner)),
+                // binary op
                 '+' => tokens.push(make_token(TokenType::Add, &scanner)),
                 '-' => tokens.push(make_token(TokenType::Sub, &scanner)),
                 '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
@@ -131,15 +153,33 @@ fn scan_number(scanner: &mut Scanner, current: char) -> Token {
     make_token(TokenType::Num(number), scanner)
 }
 
+// scan boolean, literals
+fn scan_true(scanner: &mut Scanner) -> Token {
+    match scanner.eat("rue", "true") {
+        Ok(_) => make_token(TokenType::True, &scanner),
+        Err(token) => token,
+    }
+}
+
+fn scan_false(scanner: &mut Scanner) -> Token {
+    match scanner.eat("alse", "false") {
+        Ok(_) => make_token(TokenType::False, &scanner),
+        Err(token) => token,
+    }
+}
+
+// test with -- --nocapture
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn basic() {
-        println!(
-            "{:?}",
-            scan("230 - 10 \n\n\n # comments \n # comments \n (10 + 2) * 3 + 10")
-        );
+        println!("{:?}", scan("# comments \n 10"));
+    }
+
+    #[test]
+    fn boolean() {
+        println!("{:?}", scan("# comments \n true \n false"));
     }
 }

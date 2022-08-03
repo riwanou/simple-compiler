@@ -106,6 +106,8 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Exp, Vec<String>> {
         ast = match token_type {
             TokenType::Num(n) => parse_num(&mut iterator, *n),
             TokenType::LeftParen => parse_binary(&mut iterator, Some(TokenType::LeftParen)),
+            TokenType::True => Ok(Exp::Bool(true)),
+            TokenType::False => Ok(Exp::Bool(false)),
             _ => return Err(vec![parse_error("invalid expression at beginning")]),
         }
     }
@@ -197,11 +199,17 @@ mod tests {
     }
 
     #[test]
+    fn boolean() {
+        let tokens = scan("true").unwrap();
+        assert_eq!(parse(&tokens), Ok(Bool(true)))
+    }
+
+    #[test]
     fn numerics_op() {
-        let tokens = scan("10 + 20 * 2 + 1").unwrap();
+        let tokens = scan("(2 * 1 + 2) / 2").unwrap();
         assert_eq!(
             parse(&tokens),
-            Ok(d_add(Num(10), d_add(d_mult(Num(20), Num(2)), Num(1))))
+            Ok(d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)))
         )
     }
 }

@@ -6,7 +6,7 @@ use std::fmt;
                 | binary
                 | grouping;
 
-    literal -> NUMBER;
+    literal -> NUMBER | true | false;
     grouping -> "(" expression ")";
     binary -> expression operator expression
     operator -> "+" | "-" | "*" | "+"
@@ -18,6 +18,8 @@ use std::fmt;
 pub enum TokenType {
     // Literals
     Num(i32),
+    True,
+    False,
     // Binary expressions
     Add,
     Sub,
