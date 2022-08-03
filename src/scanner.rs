@@ -86,6 +86,7 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 // actual program
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
                 '+' => tokens.push(make_token(TokenType::Add, &scanner)),
+                '-' => tokens.push(make_token(TokenType::Sub, &scanner)),
                 '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
 
                 // erors
@@ -137,7 +138,7 @@ mod tests {
     fn basic() {
         println!(
             "{:?}",
-            scan("230 \n\n\n // comments \n // comments \n 10 + 2 * 3 + 10")
+            scan("230 - 10 \n\n\n // comments \n // comments \n 10 + 2 * 3 + 10")
         );
     }
 }

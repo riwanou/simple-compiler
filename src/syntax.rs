@@ -5,6 +5,7 @@ pub enum Exp {
     Bool(bool),
     Num(i32),
     Add(Box<Exp>, Box<Exp>),
+    Sub(Box<Exp>, Box<Exp>),
     Mult(Box<Exp>, Box<Exp>),
 }
 
@@ -16,6 +17,11 @@ pub mod desugars {
     #[allow(dead_code)]
     pub fn d_add(l: Exp, r: Exp) -> Exp {
         Exp::Add(Box::new(l), Box::new(r))
+    }
+
+    #[allow(dead_code)]
+    pub fn d_sub(l: Exp, r: Exp) -> Exp {
+        Exp::Sub(Box::new(l), Box::new(r))
     }
 
     #[allow(dead_code)]

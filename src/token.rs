@@ -7,6 +7,7 @@ pub enum TokenType {
     Num(i32),
     // Binary expressions
     Add,
+    Sub,
     Mult,
     // Parser
     Error(String),
