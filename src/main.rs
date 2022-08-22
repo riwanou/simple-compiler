@@ -4,8 +4,10 @@ use std::io::prelude::Read;
 use wasmi::{ImportsBuilder, ModuleInstance, NopExternals, RuntimeValue};
 
 fn main() {
+    // get file
+    let filename = std::env::args().nth(1).expect("no filename given");
     // read from file
-    let mut file = File::open("files/numeric.lg").expect("failed to open file");
+    let mut file = File::open(format!("files/{}", filename)).expect("failed to open file");
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .expect("failed to read file as string");
@@ -37,7 +39,7 @@ fn main() {
             }
         }
         Err(errors) => {
-            println!("error: could not compile `numeric.lg`:");
+            println!("error: could not compile `{}`:", filename);
             for err in errors {
                 println!("-> {}", err);
             }

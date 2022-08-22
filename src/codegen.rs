@@ -48,7 +48,19 @@ pub fn codegen(program: Exp) -> Vec<u8> {
 // codegen expression
 pub fn codegen_exp(f: &mut Function, e: Exp) {
     match e {
+        // bool
         Exp::Bool(b) => f.instruction(Instruction::I32Const(b as i32)),
+        Exp::And(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32And)
+        }
+        Exp::Or(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32Or)
+        }
+        // num
         Exp::Num(n) => f.instruction(Instruction::I32Const(n)),
         Exp::Add(l, r) => {
             codegen_exp(f, *l);

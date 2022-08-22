@@ -23,10 +23,15 @@ fn parse_error(errors: &str) -> String {
 // prescedence priority
 pub fn prescedence_op(op: &TokenType) -> u32 {
     match op {
+        TokenType::And | TokenType::Or => 1,
         TokenType::Add | TokenType::Sub => 1,
         TokenType::Mult | TokenType::Div => 2,
         _ => 0,
     }
+}
+
+pub fn is_binary(token_type: &TokenType) -> bool {
+    matches!(token_type, TokenType::Add | TokenType::Sub | TokenType::Mult | TokenType::Div | TokenType::And | TokenType::Or)
 }
 
 pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
@@ -37,8 +42,10 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     // convert to postfix
     for t in tokens {
         match t {
-            TokenType::Num(_) => postfix.push(t),
-            TokenType::Add | TokenType::Sub | TokenType::Mult | TokenType::Div => {
+            // basic 
+            TokenType::Num(_) | TokenType::True | TokenType::False => postfix.push(t),
+            // num & num
+            ref x if is_binary(x) => {
                 while let Some(top) = operator_stack.last() {
                     if prescedence_op(&t) <= prescedence_op(top) {
                         let last = operator_stack.pop().unwrap();
@@ -49,11 +56,12 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
                 }
                 operator_stack.push(t.clone());
             }
+            // group
             TokenType::LeftParen => operator_stack.push(t.clone()),
             TokenType::RightParen => {
                 while let Some(top) = operator_stack.pop() {
                     match top {
-                        TokenType::Add | TokenType::Sub | TokenType::Mult | TokenType::Div => {
+                        ref x if is_binary(x) => {
                             postfix.push(top)
                         }
                         _ => break,
@@ -72,10 +80,14 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     // convert to prefix
     for op in postfix {
         match op {
-            TokenType::Add | TokenType::Sub | TokenType::Mult | TokenType::Div => {
+            ref x if is_binary(x) => {
                 let b = prefix_stack.pop().unwrap();
                 let a = prefix_stack.pop().unwrap();
                 match op {
+                    // bool
+                    TokenType::And => prefix_stack.push(Exp::And(Box::new(a), Box::new(b))),
+                    TokenType::Or => prefix_stack.push(Exp::Or(Box::new(a), Box::new(b))),
+                    // num
                     TokenType::Add => prefix_stack.push(Exp::Add(Box::new(a), Box::new(b))),
                     TokenType::Sub => prefix_stack.push(Exp::Sub(Box::new(a), Box::new(b))),
                     TokenType::Mult => prefix_stack.push(Exp::Mult(Box::new(a), Box::new(b))),
@@ -83,6 +95,10 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
                     _ => (),
                 }
             }
+            // bool
+            TokenType::True => prefix_stack.push(Exp::Bool(true)),
+            TokenType::False => prefix_stack.push(Exp::Bool(false)),
+            // num
             TokenType::Num(n) => prefix_stack.push(Exp::Num(n)),
             _ => (),
         }
@@ -102,22 +118,39 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Exp, Vec<String>> {
     let mut ast: Result<Exp, String> = Err(parse_error("program empty"));
     let mut iterator = tokens.iter().peekable();
 
+    // recursive parsing
     if let Some(Token { token_type, .. }) = iterator.next() {
         ast = match token_type {
             TokenType::Num(n) => parse_num(&mut iterator, *n),
             TokenType::LeftParen => parse_binary(&mut iterator, Some(TokenType::LeftParen)),
-            TokenType::True => Ok(Exp::Bool(true)),
-            TokenType::False => Ok(Exp::Bool(false)),
+            TokenType::True => parse_boolean(&mut iterator, true),
+            TokenType::False => parse_boolean(&mut iterator, false),
             _ => return Err(vec![parse_error("invalid expression at beginning")]),
         }
     }
 
+    // show parsed expression
     match ast {
         Ok(e) => {
             println!("{:?}", e);
             Ok(e)
         }
         Err(err) => Err(vec![err]),
+    }
+}
+
+// parse boolean
+fn parse_boolean(iterator: &mut Peekable<Iter<Token>>, current: bool) -> Result<Exp, String> {
+    match iterator.clone().peek() {
+        Some(_) => parse_binary(
+            iterator,
+            Some(if current {
+                TokenType::True
+            } else {
+                TokenType::False
+            }),
+        ),
+        None => Ok(Exp::Bool(current)),
     }
 }
 
@@ -140,14 +173,22 @@ fn parse_binary(
         exp_tokens.push(token_type);
     }
 
+    // is binary operation token?
     loop {
         match iterator.peek() {
             Some(peek) => match peek.token_type {
-                TokenType::Num(_)
+                // bool
+                TokenType::True
+                | TokenType::False
+                | TokenType::And
+                | TokenType::Or
+                // num
+                | TokenType::Num(_) 
                 | TokenType::Add
                 | TokenType::Sub
                 | TokenType::Mult
                 | TokenType::Div
+                // group
                 | TokenType::LeftParen
                 | TokenType::RightParen => {
                     if let Some(next) = iterator.next() {
@@ -160,7 +201,7 @@ fn parse_binary(
         }
     }
 
-    // check if the number of parenthese is matching
+    // check if the number of parentheses is matching
     let mut left_paren = 0;
     let mut right_paren = 0;
 
@@ -200,8 +241,8 @@ mod tests {
 
     #[test]
     fn boolean() {
-        let tokens = scan("true").unwrap();
-        assert_eq!(parse(&tokens), Ok(Bool(true)))
+        let tokens = scan("true & (false | true)").unwrap();
+        assert_eq!(parse(&tokens), Ok(d_and(Bool(true), d_or(Bool(false), Bool(true)))))
     }
 
     #[test]

@@ -1,0 +1,2 @@
+# boolean operations file
+(false & (true | true)) | true

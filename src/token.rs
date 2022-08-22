@@ -9,7 +9,7 @@ use std::fmt;
     literal -> NUMBER | true | false;
     grouping -> "(" expression ")";
     binary -> expression operator expression
-    operator -> "+" | "-" | "*" | "+"
+    operator -> "+" | "-" | "*" | "%" | "&" | "|"
 
     comments -> "#"
 */
@@ -21,6 +21,10 @@ pub enum TokenType {
     True,
     False,
     // Binary expressions
+    // Boolean
+    And,
+    Or,
+    // Number
     Add,
     Sub,
     Mult,

@@ -107,6 +107,10 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 't' => tokens.push(scan_true(&mut scanner)),
                 'f' => tokens.push(scan_false(&mut scanner)),
                 // binary op
+                // booolean
+                '&' => tokens.push(make_token(TokenType::And, &scanner)),
+                '|' => tokens.push(make_token(TokenType::Or, &scanner)),
+                // numbers
                 '+' => tokens.push(make_token(TokenType::Add, &scanner)),
                 '-' => tokens.push(make_token(TokenType::Sub, &scanner)),
                 '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
@@ -180,6 +184,6 @@ mod tests {
 
     #[test]
     fn boolean() {
-        println!("{:?}", scan("# comments \n true \n false"));
+        println!("{:?}", scan("# comments \n true \n false | true | false"));
     }
 }
