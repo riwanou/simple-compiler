@@ -60,6 +60,21 @@ pub fn codegen_exp(f: &mut Function, e: Exp) {
             codegen_exp(f, *r);
             f.instruction(Instruction::I32Or)
         }
+        Exp::Eq(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32Eq)
+        }
+        Exp::Sma(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32LtS)
+        }
+        Exp::Gta(l, r) => {
+            codegen_exp(f, *l);
+            codegen_exp(f, *r);
+            f.instruction(Instruction::I32GtS)
+        }
         // num
         Exp::Num(n) => f.instruction(Instruction::I32Const(n)),
         Exp::Add(l, r) => {

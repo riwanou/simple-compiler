@@ -23,7 +23,7 @@ fn parse_error(errors: &str) -> String {
 // prescedence priority
 pub fn prescedence_op(op: &TokenType) -> u32 {
     match op {
-        TokenType::And | TokenType::Or => 1,
+        TokenType::And | TokenType::Or | TokenType::Eq | TokenType::Sma | TokenType::Gta => 1,
         TokenType::Add | TokenType::Sub => 1,
         TokenType::Mult | TokenType::Div => 2,
         _ => 0,
@@ -31,7 +31,18 @@ pub fn prescedence_op(op: &TokenType) -> u32 {
 }
 
 pub fn is_binary(token_type: &TokenType) -> bool {
-    matches!(token_type, TokenType::Add | TokenType::Sub | TokenType::Mult | TokenType::Div | TokenType::And | TokenType::Or)
+    matches!(
+        token_type,
+        TokenType::Add
+            | TokenType::Sub
+            | TokenType::Mult
+            | TokenType::Div
+            | TokenType::And
+            | TokenType::Or
+            | TokenType::Eq
+            | TokenType::Sma
+            | TokenType::Gta
+    )
 }
 
 pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
@@ -42,7 +53,7 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     // convert to postfix
     for t in tokens {
         match t {
-            // basic 
+            // basic
             TokenType::Num(_) | TokenType::True | TokenType::False => postfix.push(t),
             // num & num
             ref x if is_binary(x) => {
@@ -61,9 +72,7 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
             TokenType::RightParen => {
                 while let Some(top) = operator_stack.pop() {
                     match top {
-                        ref x if is_binary(x) => {
-                            postfix.push(top)
-                        }
+                        ref x if is_binary(x) => postfix.push(top),
                         _ => break,
                     }
                 }
@@ -87,6 +96,9 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
                     // bool
                     TokenType::And => prefix_stack.push(Exp::And(Box::new(a), Box::new(b))),
                     TokenType::Or => prefix_stack.push(Exp::Or(Box::new(a), Box::new(b))),
+                    TokenType::Eq => prefix_stack.push(Exp::Eq(Box::new(a), Box::new(b))),
+                    TokenType::Sma => prefix_stack.push(Exp::Sma(Box::new(a), Box::new(b))),
+                    TokenType::Gta => prefix_stack.push(Exp::Gta(Box::new(a), Box::new(b))),
                     // num
                     TokenType::Add => prefix_stack.push(Exp::Add(Box::new(a), Box::new(b))),
                     TokenType::Sub => prefix_stack.push(Exp::Sub(Box::new(a), Box::new(b))),
@@ -182,8 +194,11 @@ fn parse_binary(
                 | TokenType::False
                 | TokenType::And
                 | TokenType::Or
+                | TokenType::Eq
+                | TokenType::Sma
+                | TokenType::Gta
                 // num
-                | TokenType::Num(_) 
+                | TokenType::Num(_)
                 | TokenType::Add
                 | TokenType::Sub
                 | TokenType::Mult
@@ -242,7 +257,22 @@ mod tests {
     #[test]
     fn boolean() {
         let tokens = scan("true & (false | true)").unwrap();
-        assert_eq!(parse(&tokens), Ok(d_and(Bool(true), d_or(Bool(false), Bool(true)))))
+        assert_eq!(
+            parse(&tokens),
+            Ok(d_and(Bool(true), d_or(Bool(false), Bool(true))))
+        )
+    }
+
+    #[test]
+    fn numeric_bool() {
+        let tokens = scan("(1<2) & (2=2) & (3>2)").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(d_and(
+                d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
+                d_gta(Num(3), Num(2))
+            ))
+        )
     }
 
     #[test]

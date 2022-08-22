@@ -110,6 +110,9 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 // booolean
                 '&' => tokens.push(make_token(TokenType::And, &scanner)),
                 '|' => tokens.push(make_token(TokenType::Or, &scanner)),
+                '=' => tokens.push(make_token(TokenType::Eq, &scanner)),
+                '<' => tokens.push(make_token(TokenType::Sma, &scanner)),
+                '>' => tokens.push(make_token(TokenType::Gta, &scanner)),
                 // numbers
                 '+' => tokens.push(make_token(TokenType::Add, &scanner)),
                 '-' => tokens.push(make_token(TokenType::Sub, &scanner)),
