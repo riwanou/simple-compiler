@@ -1,5 +1,5 @@
 use wasm_encoder::{
-    CodeSection, Export, ExportSection, Function, FunctionSection, Instruction, Module,
+    BlockType, CodeSection, Export, ExportSection, Function, FunctionSection, Instruction, Module,
     TypeSection, ValType,
 };
 
@@ -45,57 +45,43 @@ pub fn codegen(program: Exp) -> Vec<u8> {
     codegen_module(main)
 }
 
+// binary expression code generator
+pub fn binary_exp(f: &mut Function, left: Exp, right: Exp, instruction: Instruction) {
+    codegen_exp(f, left);
+    codegen_exp(f, right);
+    f.instruction(instruction);
+}
+
 // codegen expression
 pub fn codegen_exp(f: &mut Function, e: Exp) {
     match e {
         // bool
-        Exp::Bool(b) => f.instruction(Instruction::I32Const(b as i32)),
-        Exp::And(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32And)
+        Exp::Bool(b) => {
+            f.instruction(Instruction::I32Const(b as i32));
         }
-        Exp::Or(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32Or)
-        }
-        Exp::Eq(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32Eq)
-        }
-        Exp::Sma(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32LtS)
-        }
-        Exp::Gta(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32GtS)
-        }
+        // binary bool
+        Exp::And(l, r) => binary_exp(f, *l, *r, Instruction::I32And),
+        Exp::Or(l, r) => binary_exp(f, *l, *r, Instruction::I32Or),
+        Exp::Eq(l, r) => binary_exp(f, *l, *r, Instruction::I32Eq),
+        Exp::Sma(l, r) => binary_exp(f, *l, *r, Instruction::I32LtS),
+        Exp::Gta(l, r) => binary_exp(f, *l, *r, Instruction::I32GtS),
         // num
-        Exp::Num(n) => f.instruction(Instruction::I32Const(n)),
-        Exp::Add(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32Add)
+        Exp::Num(n) => {
+            f.instruction(Instruction::I32Const(n));
         }
-        Exp::Sub(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32Sub)
-        }
-        Exp::Mult(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32Mul)
-        }
-        Exp::Div(l, r) => {
-            codegen_exp(f, *l);
-            codegen_exp(f, *r);
-            f.instruction(Instruction::I32DivS)
+        // binary num
+        Exp::Add(l, r) => binary_exp(f, *l, *r, Instruction::I32Add),
+        Exp::Sub(l, r) => binary_exp(f, *l, *r, Instruction::I32Sub),
+        Exp::Mult(l, r) => binary_exp(f, *l, *r, Instruction::I32Mul),
+        Exp::Div(l, r) => binary_exp(f, *l, *r, Instruction::I32DivS),
+        // ite
+        Exp::Ite(b, t, e) => {
+            codegen_exp(f, *b);
+            f.instruction(Instruction::If(BlockType::Result(ValType::I32)));
+            codegen_exp(f, *t);
+            f.instruction(Instruction::Else);
+            codegen_exp(f, *e);
+            f.instruction(Instruction::End);
         }
     };
 }
@@ -133,6 +119,21 @@ mod tests {
                 i32.const 5\n\
                 i32.add\n\
                 i32.add"
+            )
+        );
+    }
+
+    #[test]
+    fn ite() {
+        assert_eq!(
+            print_bytes(&codegen(d_ite(Bool(false), Num(1), Num(2)))).unwrap(),
+            code_format(
+                "i32.const 0\n\
+                if  ;; label = @1\n  \
+                i32.const 1\n\
+                else\n  \
+                i32.const 2\n\
+                end"
             )
         );
     }

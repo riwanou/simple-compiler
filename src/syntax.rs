@@ -16,6 +16,8 @@ pub enum Exp {
     Sub(Box<Exp>, Box<Exp>),
     Mult(Box<Exp>, Box<Exp>),
     Div(Box<Exp>, Box<Exp>),
+    // if-then-else
+    Ite(Box<Exp>, Box<Exp>, Box<Exp>),
 }
 
 // desugars methods to avoid box boilerplates
@@ -61,5 +63,11 @@ pub mod desugars {
     #[allow(dead_code)]
     pub fn d_div(l: Exp, r: Exp) -> Exp {
         Exp::Div(Box::new(l), Box::new(r))
+    }
+
+    // if-then-else
+    #[allow(dead_code)]
+    pub fn d_ite(b: Exp, t: Exp, e: Exp) -> Exp {
+        Exp::Ite(Box::new(b), Box::new(t), Box::new(e))
     }
 }

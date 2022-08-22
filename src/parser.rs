@@ -15,6 +15,26 @@ fn parse_error(errors: &str) -> String {
 }
 
 /*
+    Eat token
+*/
+
+fn eat_token(
+    to_eat: &TokenType,
+    error: &str,
+    iterator: &mut Peekable<Iter<Token>>,
+) -> Result<(), String> {
+    if let Some(Token { token_type, .. }) = iterator.next() {
+        if token_type == to_eat {
+            Ok(())
+        } else {
+            Err(error.to_string())
+        }
+    } else {
+        Err(error.to_string())
+    }
+}
+
+/*
     Prefix postfix prefix conversion
     use shunting yard algorithm to convert prefix to postfix
     then convert back to prefix
@@ -116,6 +136,10 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
         }
     }
 
+    if prefix_stack.len() > 1 {
+        return Err(parse_error("more than one binary expression"));
+    }
+
     match prefix_stack.pop() {
         Some(exp) => Ok(exp),
         None => Err(parse_error("binary expression")),
@@ -131,15 +155,10 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Exp, Vec<String>> {
     let mut iterator = tokens.iter().peekable();
 
     // recursive parsing
-    if let Some(Token { token_type, .. }) = iterator.next() {
-        ast = match token_type {
-            TokenType::Num(n) => parse_num(&mut iterator, *n),
-            TokenType::LeftParen => parse_binary(&mut iterator, Some(TokenType::LeftParen)),
-            TokenType::True => parse_boolean(&mut iterator, true),
-            TokenType::False => parse_boolean(&mut iterator, false),
-            _ => return Err(vec![parse_error("invalid expression at beginning")]),
-        }
-    }
+    ast = match parse_exp(&mut iterator) {
+        Ok(exp) => Ok(exp),
+        Err(err) => return Err(vec![err]),
+    };
 
     // show parsed expression
     match ast {
@@ -151,18 +170,29 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Exp, Vec<String>> {
     }
 }
 
+// parse expression
+fn parse_exp(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
+    if let Some(Token { token_type, .. }) = iterator.next() {
+        match token_type {
+            TokenType::Num(n) => parse_num(iterator, *n),
+            TokenType::LeftParen => parse_binary(iterator, Some(TokenType::LeftParen)),
+            TokenType::True | TokenType::False => parse_boolean(iterator, Some(token_type.clone())),
+            TokenType::If => parse_ite(iterator),
+            _ => return Err(parse_error("invalid expression at beginning")),
+        }
+    } else {
+        return Err(parse_error("Nothing to parse"));
+    }
+}
+
 // parse boolean
-fn parse_boolean(iterator: &mut Peekable<Iter<Token>>, current: bool) -> Result<Exp, String> {
+fn parse_boolean(
+    iterator: &mut Peekable<Iter<Token>>,
+    token_type: Option<TokenType>,
+) -> Result<Exp, String> {
     match iterator.clone().peek() {
-        Some(_) => parse_binary(
-            iterator,
-            Some(if current {
-                TokenType::True
-            } else {
-                TokenType::False
-            }),
-        ),
-        None => Ok(Exp::Bool(current)),
+        Some(_) => parse_binary(iterator, token_type),
+        None => Ok(Exp::Bool(matches!(token_type, Some(TokenType::True)))),
     }
 }
 
@@ -234,6 +264,42 @@ fn parse_binary(
     convert_binary(exp_tokens)
 }
 
+// parse if-then-else
+fn parse_ite(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
+    // boolean condition
+    let condition = parse_boolean(iterator, None)?;
+
+    // then
+    eat_token(
+        &TokenType::Then,
+        "missing token 'then' in condition",
+        iterator,
+    )?;
+    let then_block = parse_exp(iterator)?;
+
+    // else
+    eat_token(
+        &TokenType::Else,
+        "missing token 'else' in condition",
+        iterator,
+    )?;
+    let else_block = parse_exp(iterator)?;
+
+    // end
+    eat_token(
+        &TokenType::End,
+        "missing token 'end' in end of condition",
+        iterator,
+    )?;
+
+    // return ite
+    Ok(Exp::Ite(
+        Box::new(condition),
+        Box::new(then_block),
+        Box::new(else_block),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +347,15 @@ mod tests {
         assert_eq!(
             parse(&tokens),
             Ok(d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)))
+        )
+    }
+
+    #[test]
+    fn ite() {
+        let tokens = scan("if 1 < 2 then 1 else 2 end").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)))
         )
     }
 }

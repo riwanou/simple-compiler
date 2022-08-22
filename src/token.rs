@@ -4,7 +4,9 @@ use std::fmt;
 /*
     expression -> literal
                 | binary
-                | grouping;
+                | grouping
+                | end
+                | if-then-else;
 
     literal -> NUMBER | true | false;
     grouping -> "(" expression ")";
@@ -14,7 +16,7 @@ use std::fmt;
     comments -> "#"
 */
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Literals
     Num(i32),
@@ -35,6 +37,12 @@ pub enum TokenType {
     // Grouping
     LeftParen,
     RightParen,
+    // End
+    End,
+    // If-then-else
+    If,
+    Then,
+    Else,
     // Parser
     Error(String),
 }

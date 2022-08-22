@@ -104,8 +104,7 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 // actual program
                 // literal
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
-                't' => tokens.push(scan_true(&mut scanner)),
-                'f' => tokens.push(scan_false(&mut scanner)),
+                'f' => tokens.push(eat_token(TokenType::False, &mut scanner, "alse", "false")),
                 // binary op
                 // booolean
                 '&' => tokens.push(make_token(TokenType::And, &scanner)),
@@ -120,6 +119,36 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 '/' => tokens.push(make_token(TokenType::Div, &scanner)),
                 '(' => tokens.push(make_token(TokenType::LeftParen, &scanner)),
                 ')' => tokens.push(make_token(TokenType::RightParen, &scanner)),
+                // if-then-else
+                'i' => tokens.push(eat_token(TokenType::If, &mut scanner, "f", "if")),
+
+                // composable
+                'e' => {
+                    if let Some(p) = scanner.peek() {
+                        match p {
+                            'l' => {
+                                tokens.push(eat_token(TokenType::Else, &mut scanner, "lse", "else"))
+                            }
+                            'n' => {
+                                tokens.push(eat_token(TokenType::End, &mut scanner, "nd", "end"))
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                't' => {
+                    if let Some(p) = scanner.peek() {
+                        match p {
+                            'r' => {
+                                tokens.push(eat_token(TokenType::True, &mut scanner, "rue", "true"))
+                            }
+                            'h' => {
+                                tokens.push(eat_token(TokenType::Then, &mut scanner, "hen", "then"))
+                            }
+                            _ => break,
+                        }
+                    }
+                }
 
                 // erors
                 _ => {
@@ -160,17 +189,15 @@ fn scan_number(scanner: &mut Scanner, current: char) -> Token {
     make_token(TokenType::Num(number), scanner)
 }
 
-// scan boolean, literals
-fn scan_true(scanner: &mut Scanner) -> Token {
-    match scanner.eat("rue", "true") {
-        Ok(_) => make_token(TokenType::True, &scanner),
-        Err(token) => token,
-    }
-}
-
-fn scan_false(scanner: &mut Scanner) -> Token {
-    match scanner.eat("alse", "false") {
-        Ok(_) => make_token(TokenType::False, &scanner),
+// eat syntax and make token from it
+fn eat_token(
+    token_type: TokenType,
+    scanner: &mut Scanner,
+    eated: &str,
+    correct_token: &str,
+) -> Token {
+    match scanner.eat(eated, correct_token) {
+        Ok(_) => make_token(token_type, scanner),
         Err(token) => token,
     }
 }
@@ -188,5 +215,10 @@ mod tests {
     #[test]
     fn boolean() {
         println!("{:?}", scan("# comments \n true \n false | true | false"));
+    }
+
+    #[test]
+    fn ite() {
+        println!("{:?}", scan("if true then 1 else 2 end"));
     }
 }
