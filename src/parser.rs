@@ -1,4 +1,6 @@
 use core::slice::Iter;
+use std::collections::HashSet;
+use std::hash::Hash;
 use std::iter::Peekable;
 use std::vec;
 
@@ -27,10 +29,23 @@ fn eat_token(
         if token_type == to_eat {
             Ok(())
         } else {
-            Err(error.to_string())
+            Err(parse_error(error))
         }
     } else {
-        Err(error.to_string())
+        Err(parse_error(error))
+    }
+}
+
+fn eat_newline(iterator: &mut Peekable<Iter<Token>>) {
+    loop {
+        if let Some(Token { token_type, .. }) = iterator.peek() {
+            match token_type {
+                TokenType::NewLine => iterator.next(),
+                _ => return,
+            };
+        } else {
+            return;
+        }
     }
 }
 
@@ -74,7 +89,9 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     for t in tokens {
         match t {
             // basic
-            TokenType::Num(_) | TokenType::True | TokenType::False => postfix.push(t),
+            TokenType::Num(_) | TokenType::Var(_) | TokenType::True | TokenType::False => {
+                postfix.push(t)
+            }
             // num & num
             ref x if is_binary(x) => {
                 while let Some(top) = operator_stack.last() {
@@ -110,8 +127,14 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     for op in postfix {
         match op {
             ref x if is_binary(x) => {
-                let b = prefix_stack.pop().unwrap();
-                let a = prefix_stack.pop().unwrap();
+                let b = match prefix_stack.pop() {
+                    Some(value) => value,
+                    None => return Err(parse_error("non-valid binary expression")),
+                };
+                let a = match prefix_stack.pop() {
+                    Some(value) => value,
+                    None => return Err(parse_error("non-valid binary expression")),
+                };
                 match op {
                     // bool
                     TokenType::And => prefix_stack.push(Exp::And(Box::new(a), Box::new(b))),
@@ -132,6 +155,8 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
             TokenType::False => prefix_stack.push(Exp::Bool(false)),
             // num
             TokenType::Num(n) => prefix_stack.push(Exp::Num(n)),
+            // var
+            TokenType::Var(var) => prefix_stack.push(Exp::Var(var)),
             _ => (),
         }
     }
@@ -150,12 +175,11 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     Parser
 */
 
-pub fn parse(tokens: &Vec<Token>) -> Result<Exp, Vec<String>> {
-    let mut ast: Result<Exp, String> = Err(parse_error("program empty"));
+pub fn parse(tokens: &Vec<Token>, var_set: &mut HashSet<String>) -> Result<Exp, Vec<String>> {
     let mut iterator = tokens.iter().peekable();
 
     // recursive parsing
-    ast = match parse_exp(&mut iterator) {
+    let ast = match parse_exp(&mut iterator, var_set) {
         Ok(exp) => Ok(exp),
         Err(err) => return Err(vec![err]),
     };
@@ -171,17 +195,28 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Exp, Vec<String>> {
 }
 
 // parse expression
-fn parse_exp(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
-    if let Some(Token { token_type, .. }) = iterator.next() {
-        match token_type {
-            TokenType::Num(n) => parse_num(iterator, *n),
-            TokenType::LeftParen => parse_binary(iterator, Some(TokenType::LeftParen)),
-            TokenType::True | TokenType::False => parse_boolean(iterator, Some(token_type.clone())),
-            TokenType::If => parse_ite(iterator),
-            _ => return Err(parse_error("invalid expression at beginning")),
+fn parse_exp(
+    iterator: &mut Peekable<Iter<Token>>,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    loop {
+        if let Some(Token { token_type, .. }) = iterator.next() {
+            return match token_type {
+                TokenType::NewLine => continue,
+                TokenType::Num(n) => parse_num(iterator, *n),
+                TokenType::Var(var) => parse_var(iterator, var, var_set),
+                TokenType::Let => parse_let(iterator, None, var_set),
+                TokenType::LeftParen => parse_binary(iterator, Some(TokenType::LeftParen)),
+                TokenType::True | TokenType::False => {
+                    parse_boolean(iterator, Some(token_type.clone()))
+                }
+
+                TokenType::If => parse_ite(iterator, var_set),
+                _ => return Err(parse_error("invalid expression at beginning")),
+            };
+        } else {
+            return Err(parse_error("Nothing to parse"));
         }
-    } else {
-        return Err(parse_error("Nothing to parse"));
     }
 }
 
@@ -227,6 +262,8 @@ fn parse_binary(
                 | TokenType::Eq
                 | TokenType::Sma
                 | TokenType::Gta
+                // var
+                | TokenType::Var(_)
                 // num
                 | TokenType::Num(_)
                 | TokenType::Add
@@ -265,9 +302,15 @@ fn parse_binary(
 }
 
 // parse if-then-else
-fn parse_ite(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
+fn parse_ite(
+    iterator: &mut Peekable<Iter<Token>>,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    eat_newline(iterator);
+
     // boolean condition
     let condition = parse_boolean(iterator, None)?;
+    eat_newline(iterator);
 
     // then
     eat_token(
@@ -275,7 +318,8 @@ fn parse_ite(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
         "missing token 'then' in condition",
         iterator,
     )?;
-    let then_block = parse_exp(iterator)?;
+    let then_block = parse_exp(iterator, var_set)?;
+    eat_newline(iterator);
 
     // else
     eat_token(
@@ -283,7 +327,8 @@ fn parse_ite(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
         "missing token 'else' in condition",
         iterator,
     )?;
-    let else_block = parse_exp(iterator)?;
+    let else_block = parse_exp(iterator, var_set)?;
+    eat_newline(iterator);
 
     // end
     eat_token(
@@ -300,6 +345,87 @@ fn parse_ite(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
     ))
 }
 
+// parse var
+fn parse_var(
+    iterator: &mut Peekable<Iter<Token>>,
+    var: &str,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    if let Some(peek) = iterator.clone().peek() {
+        if (peek.token_type == TokenType::Assign) {
+            return parse_let(iterator, Some(var), var_set);
+        }
+        if (is_binary(&peek.token_type)) {
+            return parse_binary(iterator, Some(TokenType::Var(var.to_string())));
+        }
+    }
+
+    if var_set.get(var).is_none() {
+        return Err(parse_error(&format!("variable '{}' does not exist", var)));
+    }
+
+    Ok(Exp::Var(var.to_string()))
+}
+
+// parse let
+fn parse_let(
+    iterator: &mut Peekable<Iter<Token>>,
+    var_name: Option<&str>,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    // get variable name
+    eat_newline(iterator);
+    let mut var = "";
+    match var_name {
+        Some(name) => var = name,
+        None => {
+            if let Some(Token { token_type, .. }) = iterator.next() {
+                match token_type {
+                    TokenType::Var(var_name) => var = var_name,
+                    _ => return Err(parse_error("invalid variable name in let assignment")),
+                }
+            } else {
+                return Err(parse_error("missing variable name in let assignment"));
+            }
+        }
+    }
+
+    // assign token
+    eat_newline(iterator);
+    eat_token(
+        &TokenType::Assign,
+        "missing '=' in let assignment",
+        iterator,
+    )?;
+    eat_newline(iterator);
+
+    // value to assign to variable
+    // stop at end of the line
+    let val = parse_exp(iterator, var_set)?;
+
+    // add to var set
+    var_set.insert(var.to_string());
+
+    // get body of let
+    eat_token(
+        &TokenType::NewLine,
+        "missing new line between let assignement and body",
+        iterator,
+    )?;
+
+    let body = match parse_exp(iterator, var_set) {
+        Ok(res) => res,
+        Err(err) => {
+            return Err(parse_error(&format!(
+                "missing body in let assignement for variable `{}`, body - {}",
+                var, err
+            )))
+        }
+    };
+
+    Ok(Exp::Let(var.to_string(), Box::new(val), Box::new(body)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,29 +437,32 @@ mod tests {
     #[test]
     fn num() {
         let tokens = scan("10").unwrap();
-        assert_eq!(parse(&tokens), Ok(Num(10)))
+        assert_eq!(parse(&tokens, &mut HashSet::new()), Ok(Num(10)))
     }
 
     #[test]
     fn sub() {
         let tokens = scan("10 - 5").unwrap();
-        assert_eq!(parse(&tokens), Ok(d_sub(Num(10), Num(5))))
+        assert_eq!(
+            parse(&tokens, &mut HashSet::new()),
+            Ok(d_sub(Num(10), Num(5)))
+        )
     }
 
     #[test]
     fn boolean() {
         let tokens = scan("true & (false | true)").unwrap();
         assert_eq!(
-            parse(&tokens),
+            parse(&tokens, &mut HashSet::new()),
             Ok(d_and(Bool(true), d_or(Bool(false), Bool(true))))
         )
     }
 
     #[test]
     fn numeric_bool() {
-        let tokens = scan("(1<2) & (2=2) & (3>2)").unwrap();
+        let tokens = scan("(1<2) & (2==2) & (3>2)").unwrap();
         assert_eq!(
-            parse(&tokens),
+            parse(&tokens, &mut HashSet::new()),
             Ok(d_and(
                 d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
                 d_gta(Num(3), Num(2))
@@ -345,17 +474,34 @@ mod tests {
     fn numerics_op() {
         let tokens = scan("(2 * 1 + 2) / 2").unwrap();
         assert_eq!(
-            parse(&tokens),
+            parse(&tokens, &mut HashSet::new()),
             Ok(d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)))
         )
     }
 
     #[test]
     fn ite() {
-        let tokens = scan("if 1 < 2 then 1 else 2 end").unwrap();
+        let tokens = scan("\n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end").unwrap();
         assert_eq!(
-            parse(&tokens),
+            parse(&tokens, &mut HashSet::new()),
             Ok(d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)))
+        )
+    }
+
+    #[test]
+    fn var() {
+        let tokens = scan("let 'a' \n = \n 1 + 2 \n 'a' = 'a' + 2 \n 'a'").unwrap();
+        assert_eq!(
+            parse(&tokens, &mut HashSet::new()),
+            Ok(d_let(
+                "a",
+                d_add(Num(1), Num(2)),
+                d_let(
+                    "a",
+                    d_add(Var("a".to_string()), Num(2)),
+                    Var("a".to_string())
+                )
+            ))
         )
     }
 }

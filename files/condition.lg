@@ -2,10 +2,10 @@
 # return 2
 
 if 2 < 3 then
-    if 1 = 1 & false then
+    if 1 == 1 & false then
         1
     else
-        2
+        2 + 3 
     end
 else
     3

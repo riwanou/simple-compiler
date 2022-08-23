@@ -4,6 +4,9 @@
 pub enum Exp {
     Bool(bool),
     Num(i32),
+    // variable
+    Var(String),
+    Let(String, Box<Exp>, Box<Exp>),
     // Binary op
     // boolean
     And(Box<Exp>, Box<Exp>),
@@ -69,5 +72,11 @@ pub mod desugars {
     #[allow(dead_code)]
     pub fn d_ite(b: Exp, t: Exp, e: Exp) -> Exp {
         Exp::Ite(Box::new(b), Box::new(t), Box::new(e))
+    }
+
+    // var
+    #[allow(dead_code)]
+    pub fn d_let(var: &str, val: Exp, body: Exp) -> Exp {
+        Exp::Let(var.to_string(), Box::new(val), Box::new(body))
     }
 }

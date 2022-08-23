@@ -2,16 +2,23 @@ use crate::scanner::Scanner;
 use std::fmt;
 
 /*
-    expression -> literal
-                | binary
-                | grouping
-                | end
-                | if-then-else;
+    /!\ - [value expression have to be inline]
+    (expression)
+    exp -> literal
+            | var
+            | binary
+            | grouping
+            | end
+            | ite (if-then-else)
 
-    literal -> NUMBER | true | false;
-    grouping -> "(" expression ")";
-    binary -> expression operator expression
-    operator -> "+" | "-" | "*" | "/" | "<" | "&" | "|"
+    literal -> NUMBER | true | false
+    binary -> exp operator exp
+    operator -> "+" | "-" | "*" | "/" | "==" | "<" | ">" | "&" | "|"
+    grouping -> "(" exp ")"
+
+    var -> 'var'
+    let -> let 'var' = exp \n exp
+    ite -> boolean "then" exp "else" exp "end"
 
     comments -> "#"
 */
@@ -22,6 +29,10 @@ pub enum TokenType {
     Num(i32),
     True,
     False,
+    // Variables
+    Var(String),
+    Let,
+    Assign,
     // Binary expressions
     // Boolean
     And,
@@ -39,6 +50,7 @@ pub enum TokenType {
     RightParen,
     // End
     End,
+    NewLine,
     // If-then-else
     If,
     Then,

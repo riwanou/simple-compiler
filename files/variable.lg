@@ -1,0 +1,6 @@
+# variable file
+# return 20
+
+let 'b' = 10
+'b' = 'b' + 'b'
+'b'

@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::error;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -93,23 +94,29 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
     let mut errors = false;
 
     loop {
-        match scanner.next() {
+        let next = scanner.next();
+        let peek = scanner.peek();
+        match next {
             None => break,
             Some(c) => match c {
                 // comments, empty lines, spaces, etc..
                 ' ' | '\r' | '\t' => (),
-                '\n' => scanner.new_line(),
+                '\n' => {
+                    scanner.new_line();
+                    tokens.push(make_token(TokenType::NewLine, &scanner))
+                }
                 '#' => scan_comment(&mut scanner),
 
                 // actual program
                 // literal
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
                 'f' => tokens.push(eat_token(TokenType::False, &mut scanner, "alse", "false")),
+                // var
+                '\'' => tokens.push(scan_var(&mut scanner)),
                 // binary op
                 // booolean
                 '&' => tokens.push(make_token(TokenType::And, &scanner)),
                 '|' => tokens.push(make_token(TokenType::Or, &scanner)),
-                '=' => tokens.push(make_token(TokenType::Eq, &scanner)),
                 '<' => tokens.push(make_token(TokenType::Sma, &scanner)),
                 '>' => tokens.push(make_token(TokenType::Gta, &scanner)),
                 // numbers
@@ -121,34 +128,32 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 ')' => tokens.push(make_token(TokenType::RightParen, &scanner)),
                 // if-then-else
                 'i' => tokens.push(eat_token(TokenType::If, &mut scanner, "f", "if")),
+                // let
+                'l' => tokens.push(eat_token(TokenType::Let, &mut scanner, "et", "let")),
 
                 // composable
-                'e' => {
-                    if let Some(p) = scanner.peek() {
-                        match p {
-                            'l' => {
-                                tokens.push(eat_token(TokenType::Else, &mut scanner, "lse", "else"))
-                            }
-                            'n' => {
-                                tokens.push(eat_token(TokenType::End, &mut scanner, "nd", "end"))
-                            }
-                            _ => break,
-                        }
+                '=' => match peek {
+                    Some('=') => tokens.push(eat_token(TokenType::Eq, &mut scanner, "=", "==")),
+                    _ => tokens.push(make_token(TokenType::Assign, &scanner)),
+                },
+
+                'e' => match peek {
+                    Some('l') => {
+                        tokens.push(eat_token(TokenType::Else, &mut scanner, "lse", "else"))
                     }
-                }
-                't' => {
-                    if let Some(p) = scanner.peek() {
-                        match p {
-                            'r' => {
-                                tokens.push(eat_token(TokenType::True, &mut scanner, "rue", "true"))
-                            }
-                            'h' => {
-                                tokens.push(eat_token(TokenType::Then, &mut scanner, "hen", "then"))
-                            }
-                            _ => break,
-                        }
+                    Some('n') => tokens.push(eat_token(TokenType::End, &mut scanner, "nd", "end")),
+                    _ => break,
+                },
+
+                't' => match peek {
+                    Some('r') => {
+                        tokens.push(eat_token(TokenType::True, &mut scanner, "rue", "true"))
                     }
-                }
+                    Some('h') => {
+                        tokens.push(eat_token(TokenType::Then, &mut scanner, "hen", "then"))
+                    }
+                    _ => break,
+                },
 
                 // erors
                 _ => {
@@ -189,6 +194,23 @@ fn scan_number(scanner: &mut Scanner, current: char) -> Token {
     make_token(TokenType::Num(number), scanner)
 }
 
+// get variable name
+#[allow(dead_code)]
+fn scan_var(scanner: &mut Scanner) -> Token {
+    let mut sequence = String::new();
+    while let Some(p) = scanner.peek() {
+        match p {
+            'a'..='z' | 'A'..='Z' | '0'..='9' => sequence.push(scanner.next().unwrap()),
+            '\'' => {
+                scanner.next();
+                break;
+            }
+            _ => return error_token("invalid character in variable name", scanner),
+        }
+    }
+    make_token(TokenType::Var(sequence), scanner)
+}
+
 // eat syntax and make token from it
 fn eat_token(
     token_type: TokenType,
@@ -218,7 +240,20 @@ mod tests {
     }
 
     #[test]
+    fn numeric_bool() {
+        println!("{:?}", scan("2 == 2"));
+    }
+
+    #[test]
     fn ite() {
         println!("{:?}", scan("if true then 1 else 2 end"));
+    }
+
+    #[test]
+    fn var() {
+        println!(
+            "{:?}",
+            scan("'fooO12' + 'fee' \n let 'a' = 10 + 2 \n 'a' = 2")
+        );
     }
 }
