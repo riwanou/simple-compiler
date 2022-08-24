@@ -1,5 +1,6 @@
 use core::slice::Iter;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::vec;
 
@@ -177,21 +178,24 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
 
 pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
     let mut iterator = tokens.iter().peekable();
-    let mut defs = vec![];
+    let mut defs = VecDeque::new();
     let mut errors = vec![];
     let mut contain_main = false;
 
     // recursive parsing
+    // put main function as first element
     loop {
         match parse_def(&mut iterator) {
             Ok(res) => match res {
                 Some(def) => {
                     // search for entry point "main"
                     match def.clone() {
-                        Def::Fun(name, _, _) if name == "main" => contain_main = true,
-                        _ => (),
+                        Def::Fun(name, _, _) if name == "main" => {
+                            contain_main = true;
+                            defs.push_front(def);
+                        }
+                        _ => defs.push_back(def),
                     };
-                    defs.push(def);
                     continue;
                 }
                 None => break,
@@ -201,6 +205,7 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
         break;
     }
 
+    // no entry point..
     if !contain_main {
         errors.push(parse_error("progam need a 'main' entry function"));
     }
@@ -208,7 +213,7 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
     // show parsed list of definition
     if defs.len() > 0 && errors.len() == 0 {
         println!("{:?}", defs);
-        Ok(defs)
+        Ok(defs.into())
     } else {
         Err(errors)
     }
@@ -599,7 +604,7 @@ mod tests {
 
     #[test]
     fn fun() {
-        let tokens = scan("fun 'main' let 'a' = 1 \n 'a' end fun 'a' 1 end").unwrap();
+        let tokens = scan("fun 'a' 1 end fun 'main' let 'a' = 1 \n 'a' end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(

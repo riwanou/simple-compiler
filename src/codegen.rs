@@ -3,6 +3,7 @@ use wasm_encoder::{
     TypeSection, ValType,
 };
 
+use crate::syntax::Def;
 use crate::syntax::Exp;
 use std::collections::{HashMap, HashSet};
 
@@ -63,18 +64,67 @@ impl Env {
 }
 
 // codegen given program
-pub fn codegen(program: Exp, var_set: &HashSet<String>) -> Vec<u8> {
-    // main function
-    let locals = vec![(var_set.len() as u32, ValType::I32)];
-    // Function::
-    let mut main = Function::new(locals);
-    // populate function
-    let mut env = Env::new();
-    codegen_exp(&mut main, program, &mut env);
-    // main.instruction(Instruction::LocalGet(0));
-    main.instruction(Instruction::End);
-    // generate module
-    codegen_module(main)
+pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
+    // create module
+    let mut module = Module::new();
+
+    // types and function section
+    let mut types = TypeSection::new();
+    let mut type_index = 0;
+    let mut functions = FunctionSection::new();
+
+    // generate main type
+    types.function(vec![], vec![ValType::I32]);
+    functions.function(type_index);
+
+    // generate type for every functions
+    for _ in 1..program.len() {
+        type_index += 1;
+        types.function(vec![], vec![ValType::I32]);
+        functions.function(type_index);
+    }
+
+    // populate first part of module
+    module.section(&types);
+    module.section(&functions);
+
+    // export main entry point
+    let mut exports = ExportSection::new();
+    exports.export("main", Export::Function(0));
+    module.section(&exports);
+
+    // generate code
+    let mut codes = CodeSection::new();
+
+    // generate functions
+    for i in 0..program.len() {
+        let fun = codegen_fun(program[i].to_owned());
+        codes.function(&fun);
+    }
+
+    // populate code part of module
+    module.section(&codes);
+
+    // encode module
+    let bytes = module.finish();
+    return bytes;
+}
+
+// codegen function
+// each function has it own environment
+pub fn codegen_fun(f: Def) -> Function {
+    match f {
+        Def::Fun(name, body, locals_nb) => {
+            // generate function
+            let locals = vec![(locals_nb as u32, ValType::I32)];
+            let mut fun = Function::new(locals);
+            codegen_exp(&mut fun, *body, &mut Env::new());
+            fun.instruction(Instruction::End);
+            fun
+        }
+        // generic function, should not happen..
+        _ => Function::new(vec![]),
+    }
 }
 
 // binary expression code generator
@@ -163,13 +213,24 @@ mod tests {
         .concat()
     }
 
+    fn function_format(body: &str, index: char) -> String {
+        let body: Vec<&str> = body.split("\n").collect();
+        [
+            &format!("(func (;{};) (type {}) (result i32)\n    ", index, index),
+            body.join("\n    ").as_str(),
+            "\n  )\n  ",
+        ]
+        .concat()
+    }
+
     #[test]
     fn add() {
         assert_eq!(
-            print_bytes(&codegen(
+            print_bytes(&codegen(&mut vec!(d_fun(
+                "main",
                 d_add(Num(10), d_add(Num(20), Num(5))),
-                &HashSet::new()
-            ))
+                0
+            ))))
             .unwrap(),
             code_format(
                 "i32.const 10\n\
@@ -184,10 +245,11 @@ mod tests {
     #[test]
     fn ite() {
         assert_eq!(
-            print_bytes(&codegen(
+            print_bytes(&codegen(&vec!(d_fun(
+                "main",
                 d_ite(Bool(false), Num(1), Num(2)),
-                &HashSet::new()
-            ))
+                0
+            ))))
             .unwrap(),
             code_format(
                 "i32.const 0\n\
@@ -203,16 +265,37 @@ mod tests {
     #[test]
     fn var() {
         assert_eq!(
-            print_bytes(&codegen(
+            print_bytes(&codegen(&vec!(d_fun(
+                "main",
                 d_let("a", Num(1), Var("a".to_string())),
-                &HashSet::new()
-            ))
+                0
+            ))))
             .unwrap(),
             code_format(
                 "i32.const 1\n\
-                         local.set 0\n\
-                         local.get 0"
+                local.set 0\n\
+                local.get 0"
             )
         );
+    }
+
+    #[test]
+    fn multiple_fun() {
+        assert_eq!(
+            print_bytes(&codegen(&vec!(
+                d_fun("main", Num(1), 0),
+                d_fun("foo", Num(2), 0)
+            )))
+            .unwrap(),
+            [
+                "(module\n  \
+                (type (;0;) (func (result i32)))\n  ",
+                "(type (;1;) (func (result i32)))\n  ",
+                &function_format("i32.const 1", '0'),
+                &function_format("i32.const 2", '1'),
+                "(export \"main\" (func 0))\n)"
+            ]
+            .concat()
+        )
     }
 }

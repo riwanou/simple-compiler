@@ -2,6 +2,7 @@ use crate::scanner::Scanner;
 use std::fmt;
 
 /*
+    /!\ - [program need 'main' entry point definition]
     program -> [def]
 
     (function definition)

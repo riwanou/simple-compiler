@@ -1,5 +1,9 @@
 # fun file
 
-fun main
-   10 
+fun 'main'
+    1
+end
+
+fun 'foo'
+    2
 end
