@@ -100,66 +100,42 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
             Some(c) => match c {
                 // comments, empty lines, spaces, etc..
                 ' ' | '\r' | '\t' => (),
+                '#' => scan_comment(&mut scanner),
                 '\n' => {
                     scanner.new_line();
                     tokens.push(make_token(TokenType::NewLine, &scanner))
                 }
-                '#' => scan_comment(&mut scanner),
 
                 // actual program
                 // literal
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
-                // var
-                '\'' => tokens.push(scan_var(&mut scanner)),
                 // comma
                 ',' => tokens.push(make_token(TokenType::Comma, &scanner)),
                 // binary op
-                // booolean
+                // for booolean
                 '&' => tokens.push(make_token(TokenType::And, &scanner)),
                 '|' => tokens.push(make_token(TokenType::Or, &scanner)),
                 '<' => tokens.push(make_token(TokenType::Sma, &scanner)),
                 '>' => tokens.push(make_token(TokenType::Gta, &scanner)),
-                // numbers
+                // for number
                 '+' => tokens.push(make_token(TokenType::Add, &scanner)),
                 '-' => tokens.push(make_token(TokenType::Sub, &scanner)),
                 '*' => tokens.push(make_token(TokenType::Mult, &scanner)),
                 '/' => tokens.push(make_token(TokenType::Div, &scanner)),
                 '(' => tokens.push(make_token(TokenType::LeftParen, &scanner)),
                 ')' => tokens.push(make_token(TokenType::RightParen, &scanner)),
-                // if-then-else
-                'i' => tokens.push(eat_token(TokenType::If, &mut scanner, "f", "if")),
-                // let
-                'l' => tokens.push(eat_token(TokenType::Let, &mut scanner, "et", "let")),
 
-                // composable
-                // false, function
-                'f' => match peek {
-                    Some('u') => tokens.push(eat_token(TokenType::Fun, &mut scanner, "un", "fun")),
-                    _ => tokens.push(eat_token(TokenType::False, &mut scanner, "alse", "false")),
-                },
                 // assign, equal
                 '=' => match peek {
-                    Some('=') => tokens.push(eat_token(TokenType::Eq, &mut scanner, "=", "==")),
+                    Some('=') => {
+                        scanner.next();
+                        tokens.push(make_token(TokenType::Eq, &scanner))
+                    }
                     _ => tokens.push(make_token(TokenType::Assign, &scanner)),
                 },
-                // else, end
-                'e' => match peek {
-                    Some('l') => {
-                        tokens.push(eat_token(TokenType::Else, &mut scanner, "lse", "else"))
-                    }
-                    Some('n') => tokens.push(eat_token(TokenType::End, &mut scanner, "nd", "end")),
-                    _ => break,
-                },
-                // true, then
-                't' => match peek {
-                    Some('r') => {
-                        tokens.push(eat_token(TokenType::True, &mut scanner, "rue", "true"))
-                    }
-                    Some('h') => {
-                        tokens.push(eat_token(TokenType::Then, &mut scanner, "hen", "then"))
-                    }
-                    _ => break,
-                },
+
+                // identifier
+                'a'..='z' | 'A'..='Z' | '_' => tokens.push(scan_identifier(&mut scanner, c)),
 
                 // erors
                 _ => {
@@ -176,6 +152,66 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
     }
 
     Ok(tokens)
+}
+
+// check if given identifier is a keyword
+// if not return none
+fn check_keyword(
+    token_type: TokenType,
+    scanner: &mut Scanner,
+    identifier: &str,
+    to_check: &str,
+) -> Option<Token> {
+    if identifier == to_check {
+        return Some(make_token(token_type, scanner));
+    }
+    None
+}
+
+// scan identifier
+#[allow(dead_code)]
+fn scan_identifier(scanner: &mut Scanner, current: char) -> Token {
+    let mut identifier = String::from(current);
+
+    // scan the whole identifier
+    while let Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') = scanner.peek() {
+        match scanner.next() {
+            Some(c) => identifier.push(c),
+            None => break,
+        }
+    }
+
+    // check if identifier is a keyword
+    // scan like a tries
+    let mut iter = identifier.chars().into_iter();
+
+    let keyword = match iter.next() {
+        // one step
+        Some('i') => check_keyword(TokenType::If, scanner, &identifier, "if"),
+        Some('l') => check_keyword(TokenType::Let, scanner, &identifier, "let"),
+        // two step
+        Some('f') => match iter.next() {
+            Some('u') => check_keyword(TokenType::Fun, scanner, &identifier, "fun"),
+            Some('a') => check_keyword(TokenType::False, scanner, &identifier, "false"),
+            _ => None,
+        },
+        Some('e') => match iter.next() {
+            Some('l') => check_keyword(TokenType::Else, scanner, &identifier, "else"),
+            Some('n') => check_keyword(TokenType::End, scanner, &identifier, "end"),
+            _ => None,
+        },
+        Some('t') => match iter.next() {
+            Some('r') => check_keyword(TokenType::True, scanner, &identifier, "true"),
+            Some('h') => check_keyword(TokenType::Then, scanner, &identifier, "then"),
+            _ => None,
+        },
+        _ => None,
+    };
+
+    match keyword {
+        Some(token) => token,
+        None => make_token(TokenType::Var(identifier), scanner),
+    }
 }
 
 // skip comments
@@ -217,19 +253,6 @@ fn scan_var(scanner: &mut Scanner) -> Token {
     make_token(TokenType::Var(sequence), scanner)
 }
 
-// eat syntax and make token from it
-fn eat_token(
-    token_type: TokenType,
-    scanner: &mut Scanner,
-    eated: &str,
-    correct_token: &str,
-) -> Token {
-    match scanner.eat(eated, correct_token) {
-        Ok(_) => make_token(token_type, scanner),
-        Err(token) => token,
-    }
-}
-
 // test with -- --nocapture
 #[cfg(test)]
 mod tests {
@@ -256,20 +279,22 @@ mod tests {
     }
 
     #[test]
+    fn identifier() {
+        println!("{:?}", scan("fun if then let foo fee12 myVar _main_var"));
+    }
+
+    #[test]
     fn var() {
-        println!(
-            "{:?}",
-            scan("'fooO12' + 'fee' \n let 'a' = 10 + 2 \n 'a' = 2")
-        );
+        println!("{:?}", scan("fooO12 + fee \n let a = 10 + 2 \n a = 2"));
     }
 
     #[test]
     fn fun() {
-        println!("{:?}", scan("fun 'main'('a', 'b') \n 10 \n end"))
+        println!("{:?}", scan("fun main(a, b) \n 10 \n end"))
     }
 
     #[test]
     fn call_fun() {
-        println!("{:?}", scan("'fun'(1, 2)"))
+        println!("{:?}", scan("fun(1, 2)"))
     }
 }

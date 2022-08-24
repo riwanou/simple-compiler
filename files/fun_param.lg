@@ -1,9 +1,9 @@
 # function with parameter
 
-fun 'main'()
-    'foo'()
+fun main()
+    foo()
 end
 
-fun 'foo'()
+fun foo()
     1
 end

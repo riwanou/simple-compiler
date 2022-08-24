@@ -590,14 +590,15 @@ mod tests {
     use Exp::*;
 
     #[test]
-    fn num() {
-        let tokens = scan("fun 'main'() 10 end").unwrap();
+    fn nums() {
+        let tokens = scan("fun main() 10 end").unwrap();
+        println!("TOKENS: {:?}", tokens);
         assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", Num(10), 0))))
     }
 
     #[test]
     fn sub() {
-        let tokens = scan("fun 'main'() 10 - 5 end").unwrap();
+        let tokens = scan("fun main() 10 - 5 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun("main", d_sub(Num(10), Num(5)), 0)))
@@ -606,7 +607,7 @@ mod tests {
 
     #[test]
     fn boolean() {
-        let tokens = scan("fun 'main'() true & (false | true) end").unwrap();
+        let tokens = scan("fun main() true & (false | true) end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
@@ -619,7 +620,8 @@ mod tests {
 
     #[test]
     fn numeric_bool() {
-        let tokens = scan("fun 'main'() (1<2) & (2==2) & (3>2) end").unwrap();
+        let tokens = scan("fun main() (1<2) & (2==2) & (3>2) end").unwrap();
+        println!("TOKEN: {:?}", tokens);
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
@@ -635,7 +637,7 @@ mod tests {
 
     #[test]
     fn numerics_op() {
-        let tokens = scan("fun 'main'() (2 * 1 + 2) / 2 end").unwrap();
+        let tokens = scan("fun main() (2 * 1 + 2) / 2 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
@@ -649,7 +651,7 @@ mod tests {
     #[test]
     fn ite() {
         let tokens =
-            scan("fun 'main'\n (\n ) \n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end end")
+            scan("fun main\n (\n ) \n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end end")
                 .unwrap();
         assert_eq!(
             parse(&tokens),
@@ -663,8 +665,7 @@ mod tests {
 
     #[test]
     fn var() {
-        let tokens =
-            scan("fun 'main'() let 'a' \n = \n 1 + 2 \n 'a' = 'a' + 2 \n 'a' end").unwrap();
+        let tokens = scan("fun main() let a \n = \n 1 + 2 \n a = a + 2 \n a end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
@@ -685,7 +686,7 @@ mod tests {
 
     #[test]
     fn fun() {
-        let tokens = scan("fun 'a'() 1 end fun 'main'() let 'a' = 1 \n 'a' end").unwrap();
+        let tokens = scan("fun a() 1 end fun main() let a = 1 \n a end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
@@ -697,7 +698,7 @@ mod tests {
 
     #[test]
     fn call_fun() {
-        let tokens = scan("fun 'a'() 1 end fun 'main'() 'a'() + 1 end").unwrap();
+        let tokens = scan("fun a() 1 end fun main() a() + 1 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(

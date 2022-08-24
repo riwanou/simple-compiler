@@ -3,20 +3,20 @@
 # need main function as entry point
 # return 46 
 
-fun 'foo'()
-   'fee'()
+fun foo()
+   fee()
 end
 
-fun 'fee'()
-   let 'num' = if true then 2 else 1 end
-   'num' = 'num' * 10
-    'num'
+fun fee()
+   let num = if true then 2 else 1 end
+   num = num * 10
+    num
 end
 
-fun 'main'()
-    let 'num' = 'foo'()
-    if 'num' > 2 then
-        ('num' + 3) * 2
+fun main()
+    let num = foo()
+    if num > 2 then
+        (num + 3) * 2
     else
         0
     end
