@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::error;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -110,7 +109,6 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 // actual program
                 // literal
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
-                'f' => tokens.push(eat_token(TokenType::False, &mut scanner, "alse", "false")),
                 // var
                 '\'' => tokens.push(scan_var(&mut scanner)),
                 // binary op
@@ -132,11 +130,17 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 'l' => tokens.push(eat_token(TokenType::Let, &mut scanner, "et", "let")),
 
                 // composable
+                // false, function
+                'f' => match peek {
+                    Some('u') => tokens.push(eat_token(TokenType::Fun, &mut scanner, "un", "fun")),
+                    _ => tokens.push(eat_token(TokenType::False, &mut scanner, "alse", "false")),
+                },
+                // assign, equal
                 '=' => match peek {
                     Some('=') => tokens.push(eat_token(TokenType::Eq, &mut scanner, "=", "==")),
                     _ => tokens.push(make_token(TokenType::Assign, &scanner)),
                 },
-
+                // else, end
                 'e' => match peek {
                     Some('l') => {
                         tokens.push(eat_token(TokenType::Else, &mut scanner, "lse", "else"))
@@ -144,7 +148,7 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                     Some('n') => tokens.push(eat_token(TokenType::End, &mut scanner, "nd", "end")),
                     _ => break,
                 },
-
+                // true, then
                 't' => match peek {
                     Some('r') => {
                         tokens.push(eat_token(TokenType::True, &mut scanner, "rue", "true"))
@@ -255,5 +259,10 @@ mod tests {
             "{:?}",
             scan("'fooO12' + 'fee' \n let 'a' = 10 + 2 \n 'a' = 2")
         );
+    }
+
+    #[test]
+    fn fun() {
+        println!("{:?}", scan("fun 'main' \n 10 \n end"))
     }
 }

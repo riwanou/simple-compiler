@@ -2,6 +2,11 @@ use crate::scanner::Scanner;
 use std::fmt;
 
 /*
+    program -> [def]
+
+    (function definition)
+    def -> "fun" var exp "end"
+
     /!\ - [value expression have to be inline]
     (expression)
     exp -> literal
@@ -48,6 +53,8 @@ pub enum TokenType {
     // Grouping
     LeftParen,
     RightParen,
+    // Function
+    Fun,
     // End
     End,
     NewLine,

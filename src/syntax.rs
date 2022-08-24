@@ -1,6 +1,6 @@
-// Expressions
+// expression
 #[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Exp {
     Bool(bool),
     Num(i32),
@@ -21,6 +21,14 @@ pub enum Exp {
     Div(Box<Exp>, Box<Exp>),
     // if-then-else
     Ite(Box<Exp>, Box<Exp>, Box<Exp>),
+}
+
+// definition
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone)]
+pub enum Def {
+    // function
+    Fun(String, Box<Exp>, usize),
 }
 
 // desugars methods to avoid box boilerplates
@@ -76,7 +84,18 @@ pub mod desugars {
 
     // var
     #[allow(dead_code)]
+    pub fn d_var(var: &str) -> Exp {
+        Exp::Var(var.to_string())
+    }
+    #[allow(dead_code)]
     pub fn d_let(var: &str, val: Exp, body: Exp) -> Exp {
         Exp::Let(var.to_string(), Box::new(val), Box::new(body))
+    }
+
+    // definition
+    // function
+    #[allow(dead_code)]
+    pub fn d_fun(name: &str, body: Exp, locals_nb: usize) -> Def {
+        Def::Fun(name.to_string(), Box::new(body), locals_nb)
     }
 }

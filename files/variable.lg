@@ -1,6 +1,6 @@
 # variable file
-# return 20
+# return 24
 
 let 'b' = 10
-'b' = 'b' + 'b'
+'b' = ('b' + 2) * 2
 'b'

@@ -15,8 +15,8 @@ pub fn compile(contents: &str) -> Result<Vec<u8>, Vec<String>> {
     let tokens = scan(contents)?;
     // parse the tokens
     // variables name key set
-    let mut var_set = HashSet::<String>::new();
-    let program = parse(&tokens, &mut var_set)?;
+    let program = parse(&tokens)?;
     // generate program
-    return Ok(codegen(program, &var_set));
+    // return Ok(codegen(program, &var_set));
+    todo!()
 }

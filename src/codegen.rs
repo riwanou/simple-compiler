@@ -65,7 +65,7 @@ impl Env {
 // codegen given program
 pub fn codegen(program: Exp, var_set: &HashSet<String>) -> Vec<u8> {
     // main function
-    let mut locals = vec![(var_set.len() as u32, ValType::I32)];
+    let locals = vec![(var_set.len() as u32, ValType::I32)];
     // Function::
     let mut main = Function::new(locals);
     // populate function

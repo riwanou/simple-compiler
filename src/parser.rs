@@ -1,9 +1,9 @@
 use core::slice::Iter;
 use std::collections::HashSet;
-use std::hash::Hash;
 use std::iter::Peekable;
 use std::vec;
 
+use crate::syntax::Def;
 use crate::syntax::Exp;
 use crate::token::Token;
 use crate::token::TokenType;
@@ -175,23 +175,94 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     Parser
 */
 
-pub fn parse(tokens: &Vec<Token>, var_set: &mut HashSet<String>) -> Result<Exp, Vec<String>> {
+pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
     let mut iterator = tokens.iter().peekable();
+    let mut defs = vec![];
+    let mut errors = vec![];
+    let mut contain_main = false;
 
     // recursive parsing
-    let ast = match parse_exp(&mut iterator, var_set) {
-        Ok(exp) => Ok(exp),
-        Err(err) => return Err(vec![err]),
-    };
-
-    // show parsed expression
-    match ast {
-        Ok(e) => {
-            println!("{:?}", e);
-            Ok(e)
+    loop {
+        match parse_def(&mut iterator) {
+            Ok(res) => match res {
+                Some(def) => {
+                    // search for entry point "main"
+                    match def.clone() {
+                        Def::Fun(name, _, _) if name == "main" => contain_main = true,
+                        _ => (),
+                    };
+                    defs.push(def);
+                    continue;
+                }
+                None => break,
+            },
+            Err(err) => errors.push(err),
         }
-        Err(err) => Err(vec![err]),
+        break;
     }
+
+    if !contain_main {
+        errors.push(parse_error("progam need a 'main' entry function"));
+    }
+
+    // show parsed list of definition
+    if defs.len() > 0 && errors.len() == 0 {
+        println!("{:?}", defs);
+        Ok(defs)
+    } else {
+        Err(errors)
+    }
+}
+
+// parse definitions
+fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String> {
+    eat_newline(iterator);
+
+    // end of file?
+    if iterator.peek().is_none() {
+        return Ok(None);
+    }
+
+    // fun keyword
+    eat_token(
+        &TokenType::Fun,
+        "missing token 'fun' in function declaration",
+        iterator,
+    )?;
+    eat_newline(iterator);
+
+    // get function name
+    let fun_name;
+    if let Some(Token { token_type, .. }) = iterator.next() {
+        match token_type {
+            TokenType::Var(name) => fun_name = name,
+            _ => return Err(parse_error("invalid variable name in function declaration")),
+        }
+    } else {
+        return Err(parse_error("missing function name in function declaration"));
+    }
+    eat_newline(iterator);
+
+    // get function body
+    let mut locals = HashSet::new();
+    let body = parse_exp(iterator, &mut locals)?;
+    eat_newline(iterator);
+
+    // get end token
+    eat_token(
+        &TokenType::End,
+        &format!(
+            "missing token 'end' in function declaration: '{}'",
+            fun_name
+        ),
+        iterator,
+    )?;
+
+    Ok(Some(Def::Fun(
+        fun_name.to_string(),
+        Box::new(body),
+        locals.len(),
+    )))
 }
 
 // parse expression
@@ -352,10 +423,10 @@ fn parse_var(
     var_set: &mut HashSet<String>,
 ) -> Result<Exp, String> {
     if let Some(peek) = iterator.clone().peek() {
-        if (peek.token_type == TokenType::Assign) {
+        if peek.token_type == TokenType::Assign {
             return parse_let(iterator, Some(var), var_set);
         }
-        if (is_binary(&peek.token_type)) {
+        if is_binary(&peek.token_type) {
             return parse_binary(iterator, Some(TokenType::Var(var.to_string())));
         }
     }
@@ -375,7 +446,7 @@ fn parse_let(
 ) -> Result<Exp, String> {
     // get variable name
     eat_newline(iterator);
-    let mut var = "";
+    let var;
     match var_name {
         Some(name) => var = name,
         None => {
@@ -436,71 +507,104 @@ mod tests {
 
     #[test]
     fn num() {
-        let tokens = scan("10").unwrap();
-        assert_eq!(parse(&tokens, &mut HashSet::new()), Ok(Num(10)))
+        let tokens = scan("fun 'main' 10 end").unwrap();
+        assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", Num(10), 0))))
     }
 
     #[test]
     fn sub() {
-        let tokens = scan("10 - 5").unwrap();
+        let tokens = scan("fun 'main' 10 - 5 end").unwrap();
         assert_eq!(
-            parse(&tokens, &mut HashSet::new()),
-            Ok(d_sub(Num(10), Num(5)))
+            parse(&tokens),
+            Ok(vec!(d_fun("main", d_sub(Num(10), Num(5)), 0)))
         )
     }
 
     #[test]
     fn boolean() {
-        let tokens = scan("true & (false | true)").unwrap();
+        let tokens = scan("fun 'main' true & (false | true) end").unwrap();
         assert_eq!(
-            parse(&tokens, &mut HashSet::new()),
-            Ok(d_and(Bool(true), d_or(Bool(false), Bool(true))))
+            parse(&tokens),
+            Ok(vec!(d_fun(
+                "main",
+                d_and(Bool(true), d_or(Bool(false), Bool(true))),
+                0
+            )))
         )
     }
 
     #[test]
     fn numeric_bool() {
-        let tokens = scan("(1<2) & (2==2) & (3>2)").unwrap();
+        let tokens = scan("fun 'main' (1<2) & (2==2) & (3>2) end").unwrap();
         assert_eq!(
-            parse(&tokens, &mut HashSet::new()),
-            Ok(d_and(
-                d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
-                d_gta(Num(3), Num(2))
-            ))
+            parse(&tokens),
+            Ok(vec!(d_fun(
+                "main",
+                d_and(
+                    d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
+                    d_gta(Num(3), Num(2))
+                ),
+                0
+            )))
         )
     }
 
     #[test]
     fn numerics_op() {
-        let tokens = scan("(2 * 1 + 2) / 2").unwrap();
+        let tokens = scan("fun 'main' (2 * 1 + 2) / 2 end").unwrap();
         assert_eq!(
-            parse(&tokens, &mut HashSet::new()),
-            Ok(d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)))
+            parse(&tokens),
+            Ok(vec!(d_fun(
+                "main",
+                d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)),
+                0
+            )))
         )
     }
 
     #[test]
     fn ite() {
-        let tokens = scan("\n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end").unwrap();
+        let tokens =
+            scan("fun 'main' \n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end end").unwrap();
         assert_eq!(
-            parse(&tokens, &mut HashSet::new()),
-            Ok(d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)))
+            parse(&tokens),
+            Ok(vec!(d_fun(
+                "main",
+                d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)),
+                0
+            )))
         )
     }
 
     #[test]
     fn var() {
-        let tokens = scan("let 'a' \n = \n 1 + 2 \n 'a' = 'a' + 2 \n 'a'").unwrap();
+        let tokens = scan("fun 'main' let 'a' \n = \n 1 + 2 \n 'a' = 'a' + 2 \n 'a' end").unwrap();
         assert_eq!(
-            parse(&tokens, &mut HashSet::new()),
-            Ok(d_let(
-                "a",
-                d_add(Num(1), Num(2)),
+            parse(&tokens),
+            Ok(vec!(d_fun(
+                "main",
                 d_let(
                     "a",
-                    d_add(Var("a".to_string()), Num(2)),
-                    Var("a".to_string())
-                )
+                    d_add(Num(1), Num(2)),
+                    d_let(
+                        "a",
+                        d_add(Var("a".to_string()), Num(2)),
+                        Var("a".to_string())
+                    )
+                ),
+                1
+            )))
+        )
+    }
+
+    #[test]
+    fn fun() {
+        let tokens = scan("fun 'main' let 'a' = 1 \n 'a' end fun 'a' 1 end").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(vec!(
+                d_fun("main", d_let("a", Num(1), d_var("a")), 1),
+                d_fun("a", Num(1), 0)
             ))
         )
     }
