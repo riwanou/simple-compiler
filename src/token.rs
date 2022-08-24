@@ -6,7 +6,7 @@ use std::fmt;
     program -> [def]
 
     (function definition)
-    def -> "fun" var exp "end"
+    def -> "fun" var(p1, p2, ..) exp "end"
 
     /!\ - [value expression have to be inline]
     (expression)
@@ -28,7 +28,7 @@ use std::fmt;
     ite -> boolean "then" exp "else" exp "end"
 
     (var is function name in this case)
-    call -> 'var'()
+    call -> 'var'(p1, p2, ..)
 
     comments -> "#"
 */
@@ -61,6 +61,7 @@ pub enum TokenType {
     // Function
     Fun,
     Call(String),
+    Comma,
     // End
     End,
     NewLine,

@@ -1,10 +1,23 @@
 # fun file
-# return 10
+# order of functions is not important
+# need main function as entry point
+# return 46 
 
-fun 'main'
-    ('foo'() + 3) * 2
+fun 'foo'()
+   'fee'()
 end
 
-fun 'foo'
-    2
+fun 'fee'()
+   let 'num' = if true then 2 else 1 end
+   'num' = 'num' * 10
+    'num'
+end
+
+fun 'main'()
+    let 'num' = 'foo'()
+    if 'num' > 2 then
+        ('num' + 3) * 2
+    else
+        0
+    end
 end

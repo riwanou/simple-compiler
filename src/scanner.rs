@@ -111,6 +111,8 @@ pub fn scan(content: &str) -> Result<Vec<Token>, Vec<String>> {
                 '0'..='9' => tokens.push(scan_number(&mut scanner, c)),
                 // var
                 '\'' => tokens.push(scan_var(&mut scanner)),
+                // comma
+                ',' => tokens.push(make_token(TokenType::Comma, &scanner)),
                 // binary op
                 // booolean
                 '&' => tokens.push(make_token(TokenType::And, &scanner)),
@@ -263,11 +265,11 @@ mod tests {
 
     #[test]
     fn fun() {
-        println!("{:?}", scan("fun 'main' \n 10 \n end"))
+        println!("{:?}", scan("fun 'main'('a', 'b') \n 10 \n end"))
     }
 
     #[test]
     fn call_fun() {
-        println!("{:?}", scan("call 'fun'()"))
+        println!("{:?}", scan("'fun'(1, 2)"))
     }
 }

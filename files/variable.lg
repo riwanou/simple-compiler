@@ -1,6 +1,8 @@
 # variable file
 # return 24
 
-let 'b' = 10
-'b' = ('b' + 2) * 2
-'b'
+fun 'main'()
+    let 'b' = 10
+    'b' = ('b' + 2) * 2
+    'b'
+end

@@ -1,0 +1,9 @@
+# function with parameter
+
+fun 'main'()
+    'foo'()
+end
+
+fun 'foo'()
+    1
+end
