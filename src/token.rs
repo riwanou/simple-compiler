@@ -16,6 +16,7 @@ use std::fmt;
             | grouping
             | end
             | ite (if-then-else)
+            | call (function)
 
     literal -> NUMBER | true | false
     binary -> exp operator exp
@@ -25,6 +26,9 @@ use std::fmt;
     var -> 'var'
     let -> let 'var' = exp \n exp
     ite -> boolean "then" exp "else" exp "end"
+
+    (var is function name in this case)
+    call -> 'var'()
 
     comments -> "#"
 */
@@ -56,6 +60,7 @@ pub enum TokenType {
     RightParen,
     // Function
     Fun,
+    Call(String),
     // End
     End,
     NewLine,

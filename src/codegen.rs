@@ -5,39 +5,12 @@ use wasm_encoder::{
 
 use crate::syntax::Def;
 use crate::syntax::Exp;
-use std::collections::{HashMap, HashSet};
-
-// Generate a WASM module using body as main function
-pub fn codegen_module(body: Function) -> Vec<u8> {
-    // generate module
-    let mut module = Module::new();
-    // type section
-    let mut types = TypeSection::new();
-    let params = vec![];
-    let results = vec![ValType::I32];
-    types.function(params, results);
-    module.section(&types);
-    // function section
-    let mut functions = FunctionSection::new();
-    let type_index = 0;
-    functions.function(type_index);
-    module.section(&functions);
-    // export section
-    let mut exports = ExportSection::new();
-    exports.export("main", Export::Function(0));
-    module.section(&exports);
-    // code section
-    let mut codes = CodeSection::new();
-    codes.function(&body);
-    module.section(&codes);
-    // encoded wasm bytes for this module
-    let bytes = module.finish();
-    return bytes;
-}
+use std::collections::HashMap;
 
 /*
     local variable environment
 */
+#[derive(Debug)]
 pub struct Env {
     map: HashMap<String, u32>,
     counter: u32,
@@ -70,18 +43,19 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 
     // types and function section
     let mut types = TypeSection::new();
-    let mut type_index = 0;
     let mut functions = FunctionSection::new();
 
-    // generate main type
-    types.function(vec![], vec![ValType::I32]);
-    functions.function(type_index);
+    // function environment
+    // map function name to their type index
+    let mut fun_env = Env::new();
 
     // generate type for every functions
-    for _ in 1..program.len() {
-        type_index += 1;
+    for i in 0..program.len() {
         types.function(vec![], vec![ValType::I32]);
-        functions.function(type_index);
+        functions.function(fun_env.counter);
+        match program[i].to_owned() {
+            Def::Fun(name, _, _) => fun_env.add(&name),
+        };
     }
 
     // populate first part of module
@@ -98,7 +72,7 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 
     // generate functions
     for i in 0..program.len() {
-        let fun = codegen_fun(program[i].to_owned());
+        let fun = codegen_fun(program[i].to_owned(), &fun_env);
         codes.function(&fun);
     }
 
@@ -112,18 +86,16 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 
 // codegen function
 // each function has it own environment
-pub fn codegen_fun(f: Def) -> Function {
+pub fn codegen_fun(f: Def, fun_env: &Env) -> Function {
     match f {
-        Def::Fun(name, body, locals_nb) => {
+        Def::Fun(_, body, locals_nb) => {
             // generate function
             let locals = vec![(locals_nb as u32, ValType::I32)];
             let mut fun = Function::new(locals);
-            codegen_exp(&mut fun, *body, &mut Env::new());
+            codegen_exp(&mut fun, *body, &mut Env::new(), fun_env);
             fun.instruction(Instruction::End);
             fun
         }
-        // generic function, should not happen..
-        _ => Function::new(vec![]),
     }
 }
 
@@ -134,48 +106,56 @@ pub fn binary_exp(
     right: Exp,
     instruction: Instruction,
     env: &mut Env,
+    fun_env: &Env,
 ) {
-    codegen_exp(f, left, env);
-    codegen_exp(f, right, env);
+    codegen_exp(f, left, env, fun_env);
+    codegen_exp(f, right, env, fun_env);
     f.instruction(instruction);
 }
 
 // codegen expression
-pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env) {
+pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env, fun_env: &Env) {
     match e {
         // bool
         Exp::Bool(b) => {
             f.instruction(Instruction::I32Const(b as i32));
         }
         // binary bool
-        Exp::And(l, r) => binary_exp(f, *l, *r, Instruction::I32And, env),
-        Exp::Or(l, r) => binary_exp(f, *l, *r, Instruction::I32Or, env),
-        Exp::Eq(l, r) => binary_exp(f, *l, *r, Instruction::I32Eq, env),
-        Exp::Sma(l, r) => binary_exp(f, *l, *r, Instruction::I32LtS, env),
-        Exp::Gta(l, r) => binary_exp(f, *l, *r, Instruction::I32GtS, env),
+        Exp::And(l, r) => binary_exp(f, *l, *r, Instruction::I32And, env, fun_env),
+        Exp::Or(l, r) => binary_exp(f, *l, *r, Instruction::I32Or, env, fun_env),
+        Exp::Eq(l, r) => binary_exp(f, *l, *r, Instruction::I32Eq, env, fun_env),
+        Exp::Sma(l, r) => binary_exp(f, *l, *r, Instruction::I32LtS, env, fun_env),
+        Exp::Gta(l, r) => binary_exp(f, *l, *r, Instruction::I32GtS, env, fun_env),
         // num
         Exp::Num(n) => {
             f.instruction(Instruction::I32Const(n));
         }
         // binary num
-        Exp::Add(l, r) => binary_exp(f, *l, *r, Instruction::I32Add, env),
-        Exp::Sub(l, r) => binary_exp(f, *l, *r, Instruction::I32Sub, env),
-        Exp::Mult(l, r) => binary_exp(f, *l, *r, Instruction::I32Mul, env),
-        Exp::Div(l, r) => binary_exp(f, *l, *r, Instruction::I32DivS, env),
+        Exp::Add(l, r) => binary_exp(f, *l, *r, Instruction::I32Add, env, fun_env),
+        Exp::Sub(l, r) => binary_exp(f, *l, *r, Instruction::I32Sub, env, fun_env),
+        Exp::Mult(l, r) => binary_exp(f, *l, *r, Instruction::I32Mul, env, fun_env),
+        Exp::Div(l, r) => binary_exp(f, *l, *r, Instruction::I32DivS, env, fun_env),
         // ite
         Exp::Ite(b, t, e) => {
-            codegen_exp(f, *b, env);
+            codegen_exp(f, *b, env, fun_env);
             f.instruction(Instruction::If(BlockType::Result(ValType::I32)));
-            codegen_exp(f, *t, env);
+            codegen_exp(f, *t, env, fun_env);
             f.instruction(Instruction::Else);
-            codegen_exp(f, *e, env);
+            codegen_exp(f, *e, env, fun_env);
             f.instruction(Instruction::End);
+        }
+        // call
+        Exp::Call(fun_name) => {
+            match fun_env.get(&fun_name) {
+                Some(id) => f.instruction(Instruction::Call(*id)),
+                _ => panic!("codegen: try to call inexistent function name"),
+            };
         }
         // var
         Exp::Var(str) => {
             match env.get(&str) {
                 Some(var) => f.instruction(Instruction::LocalGet(*var)),
-                _ => f.instruction(Instruction::I32Const(0)),
+                _ => panic!("codegen: try to call inexistent variable name"),
             };
         }
         Exp::Let(str, val, body) => {
@@ -183,9 +163,9 @@ pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env) {
                 Some(value) => value.clone(),
                 None => env.add(&str),
             };
-            codegen_exp(f, *val, env);
+            codegen_exp(f, *val, env, fun_env);
             f.instruction(Instruction::LocalSet(var));
-            codegen_exp(f, *body, env)
+            codegen_exp(f, *body, env, fun_env)
         }
     };
 }
@@ -292,6 +272,26 @@ mod tests {
                 (type (;0;) (func (result i32)))\n  ",
                 "(type (;1;) (func (result i32)))\n  ",
                 &function_format("i32.const 1", '0'),
+                &function_format("i32.const 2", '1'),
+                "(export \"main\" (func 0))\n)"
+            ]
+            .concat()
+        )
+    }
+
+    #[test]
+    fn call_fun() {
+        assert_eq!(
+            print_bytes(&codegen(&vec!(
+                d_fun("main", d_call("foo"), 0),
+                d_fun("foo", Num(2), 0)
+            )))
+            .unwrap(),
+            [
+                "(module\n  \
+                (type (;0;) (func (result i32)))\n  ",
+                "(type (;1;) (func (result i32)))\n  ",
+                &function_format("call 1", '0'),
                 &function_format("i32.const 2", '1'),
                 "(export \"main\" (func 0))\n)"
             ]

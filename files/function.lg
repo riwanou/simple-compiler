@@ -1,7 +1,8 @@
 # fun file
+# return 10
 
 fun 'main'
-    1
+    ('foo'() + 3) * 2
 end
 
 fun 'foo'

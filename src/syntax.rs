@@ -21,6 +21,8 @@ pub enum Exp {
     Div(Box<Exp>, Box<Exp>),
     // if-then-else
     Ite(Box<Exp>, Box<Exp>, Box<Exp>),
+    // call
+    Call(String),
 }
 
 // definition
@@ -80,6 +82,12 @@ pub mod desugars {
     #[allow(dead_code)]
     pub fn d_ite(b: Exp, t: Exp, e: Exp) -> Exp {
         Exp::Ite(Box::new(b), Box::new(t), Box::new(e))
+    }
+
+    // call
+    #[allow(dead_code)]
+    pub fn d_call(fun_name: &str) -> Exp {
+        Exp::Call(fun_name.to_string())
     }
 
     // var

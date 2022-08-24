@@ -90,9 +90,11 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     for t in tokens {
         match t {
             // basic
-            TokenType::Num(_) | TokenType::Var(_) | TokenType::True | TokenType::False => {
-                postfix.push(t)
-            }
+            TokenType::Num(_)
+            | TokenType::Var(_)
+            | TokenType::Call(_)
+            | TokenType::True
+            | TokenType::False => postfix.push(t),
             // num & num
             ref x if is_binary(x) => {
                 while let Some(top) = operator_stack.last() {
@@ -158,6 +160,8 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
             TokenType::Num(n) => prefix_stack.push(Exp::Num(n)),
             // var
             TokenType::Var(var) => prefix_stack.push(Exp::Var(var)),
+            // call
+            TokenType::Call(fun_name) => prefix_stack.push(Exp::Call(fun_name)),
             _ => (),
         }
     }
@@ -286,7 +290,6 @@ fn parse_exp(
                 TokenType::True | TokenType::False => {
                     parse_boolean(iterator, Some(token_type.clone()))
                 }
-
                 TokenType::If => parse_ite(iterator, var_set),
                 _ => return Err(parse_error("invalid expression at beginning")),
             };
@@ -329,7 +332,7 @@ fn parse_binary(
     // is binary operation token?
     loop {
         match iterator.peek() {
-            Some(peek) => match peek.token_type {
+            Some(peek) => match peek.token_type.clone() {
                 // bool
                 TokenType::True
                 | TokenType::False
@@ -338,8 +341,6 @@ fn parse_binary(
                 | TokenType::Eq
                 | TokenType::Sma
                 | TokenType::Gta
-                // var
-                | TokenType::Var(_)
                 // num
                 | TokenType::Num(_)
                 | TokenType::Add
@@ -351,6 +352,20 @@ fn parse_binary(
                 | TokenType::RightParen => {
                     if let Some(next) = iterator.next() {
                         exp_tokens.push(next.token_type.clone())
+                    }
+                }
+                // var, test if function application
+                TokenType::Var(var_name) => {
+                    if let Some(next) = iterator.next() {
+                        if let Some(Token {token_type, ..}) = iterator.peek() {
+                            if matches!(token_type, TokenType::LeftParen) {
+                                let token = parse_call(iterator, &var_name)?;
+                                exp_tokens.push(token);
+                                continue;
+                            }
+
+                        }
+                        exp_tokens.push(next.token_type.clone());
                     }
                 }
                 _ => break,
@@ -421,6 +436,46 @@ fn parse_ite(
     ))
 }
 
+// convert call tokenized version to expression
+fn call_to_exp(iterator: &mut Peekable<Iter<Token>>, token: TokenType) -> Result<Exp, String> {
+    // check if there is binary operation afterward, if so then let parse_binary handle it
+    if let Some(peek) = iterator.clone().peek() {
+        // (binary expression)
+        if is_binary(&peek.token_type) {
+            return parse_binary(iterator, Some(token));
+        }
+    }
+
+    // else simply return
+    match token {
+        TokenType::Call(fun_name) => Ok(Exp::Call(fun_name.to_string())),
+        _ => Err(parse_error("wrong token type for function application")),
+    }
+}
+
+// parse as tokenized version function call
+fn parse_call(iterator: &mut Peekable<Iter<Token>>, fun_name: &str) -> Result<TokenType, String> {
+    // eat parameter till right parent ')'
+    loop {
+        //can have end of line between parameters
+        eat_newline(iterator);
+        if let Some(Token { token_type, .. }) = iterator.next() {
+            match token_type {
+                TokenType::RightParen => break,
+                _ => continue,
+            }
+        }
+        return Err(parse_error(&format!(
+            "function application open '(' but not close ')' for '{}'",
+            fun_name
+        )));
+    }
+
+    Ok(TokenType::Call(fun_name.to_string()))
+}
+
+// parse function call
+
 // parse var
 fn parse_var(
     iterator: &mut Peekable<Iter<Token>>,
@@ -428,11 +483,18 @@ fn parse_var(
     var_set: &mut HashSet<String>,
 ) -> Result<Exp, String> {
     if let Some(peek) = iterator.clone().peek() {
+        // variable = expression
         if peek.token_type == TokenType::Assign {
             return parse_let(iterator, Some(var), var_set);
         }
+        // variable + 1 (binary expression)
         if is_binary(&peek.token_type) {
             return parse_binary(iterator, Some(TokenType::Var(var.to_string())));
+        }
+        // variable() (function application)
+        if peek.token_type == TokenType::LeftParen {
+            let token = parse_call(iterator, var)?;
+            return call_to_exp(iterator, token);
         }
     }
 
@@ -609,6 +671,18 @@ mod tests {
             parse(&tokens),
             Ok(vec!(
                 d_fun("main", d_let("a", Num(1), d_var("a")), 1),
+                d_fun("a", Num(1), 0)
+            ))
+        )
+    }
+
+    #[test]
+    fn call_fun() {
+        let tokens = scan("fun 'a' 1 end fun 'main' 'a'() + 1 end").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(vec!(
+                d_fun("main", d_add(d_call("a"), Num(1)), 0),
                 d_fun("a", Num(1), 0)
             ))
         )

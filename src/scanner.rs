@@ -265,4 +265,9 @@ mod tests {
     fn fun() {
         println!("{:?}", scan("fun 'main' \n 10 \n end"))
     }
+
+    #[test]
+    fn call_fun() {
+        println!("{:?}", scan("call 'fun'()"))
+    }
 }
