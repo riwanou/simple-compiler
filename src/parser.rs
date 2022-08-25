@@ -198,6 +198,11 @@ fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String
 
     // get function body
     let mut locals = HashSet::new();
+    // add param variables to locals
+    params.iter().for_each(|param| {
+        locals.insert(param.to_string());
+    });
+    // get body
     let body = parse_exp(iterator, &mut locals)?;
     eat_newline(iterator);
 
@@ -854,14 +859,14 @@ mod tests {
     #[test]
     fn fun_par() {
         let tokens =
-            scan("\nfun \nmain\n(\nfoo\n\n ,\n fee \n)\n main(\n1\n,\n2\n)\n end").unwrap();
+            scan("\nfun \nmain\n(\nfoo\n\n ,\n fee \n)\n main(\n1\n,\n2\n) + fee \n end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
                 &vec!("foo".into(), "fee".into()),
-                d_call("main", &vec!(Num(1), Num(2))),
-                0
+                d_add(d_call("main", &vec!(Num(1), Num(2))), d_var("fee")),
+                2
             )))
         )
     }

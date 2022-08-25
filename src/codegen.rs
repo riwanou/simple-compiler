@@ -8,7 +8,7 @@ use crate::syntax::Exp;
 use std::collections::HashMap;
 
 /*
-    local variable environment
+    local environment
 */
 #[derive(Debug)]
 pub struct Env {
@@ -51,10 +51,12 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 
     // generate type for every functions
     for i in 0..program.len() {
-        types.function(vec![], vec![ValType::I32]);
         functions.function(fun_env.counter);
         match program[i].to_owned() {
-            Def::Fun(name, params, _, _) => fun_env.add(&name),
+            Def::Fun(name, params, _, _) => {
+                types.function(vec![ValType::I32; params.len()], vec![ValType::I32]);
+                fun_env.add(&name);
+            }
         };
     }
 
@@ -88,11 +90,16 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 // each function has it own environment
 pub fn codegen_fun(f: Def, fun_env: &Env) -> Function {
     match f {
-        Def::Fun(_, _, body, locals_nb) => {
+        Def::Fun(_, param, body, locals_nb) => {
             // generate function
-            let locals = vec![(locals_nb as u32, ValType::I32)];
+            let locals = vec![((locals_nb + param.len()) as u32, ValType::I32)];
             let mut fun = Function::new(locals);
-            codegen_exp(&mut fun, *body, &mut Env::new(), fun_env);
+            // populate env with function params
+            let mut env = Env::new();
+            param.iter().for_each(|param| {
+                env.add(&param);
+            });
+            codegen_exp(&mut fun, *body, &mut env, fun_env);
             fun.instruction(Instruction::End);
             fun
         }
@@ -147,7 +154,13 @@ pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env, fun_env: &Env) {
         // call
         Exp::Call(fun_name, args) => {
             match fun_env.get(&fun_name) {
-                Some(id) => f.instruction(Instruction::Call(*id)),
+                Some(id) => {
+                    // generate each arguments in order
+                    for arg in args {
+                        codegen_exp(f, arg, env, fun_env);
+                    }
+                    f.instruction(Instruction::Call(*id));
+                }
                 _ => panic!("codegen: try to call inexistent function name"),
             };
         }
@@ -197,6 +210,16 @@ mod tests {
         let body: Vec<&str> = body.split("\n").collect();
         [
             &format!("(func (;{};) (type {}) (result i32)\n    ", index, index),
+            body.join("\n    ").as_str(),
+            "\n  )\n  ",
+        ]
+        .concat()
+    }
+
+    fn custom_fun_format(fun_sign: &str, body: &str, index: char) -> String {
+        let body: Vec<&str> = body.split("\n").collect();
+        [
+            &format!("(func (;{};) (type {}) {}\n    ", index, index, fun_sign),
             body.join("\n    ").as_str(),
             "\n  )\n  ",
         ]
@@ -296,6 +319,35 @@ mod tests {
                 "(type (;1;) (func (result i32)))\n  ",
                 &function_format("call 1", '0'),
                 &function_format("i32.const 2", '1'),
+                "(export \"main\" (func 0))\n)"
+            ]
+            .concat()
+        )
+    }
+
+    #[test]
+    fn fun_param() {
+        assert_eq!(
+            print_bytes(&codegen(&vec!(
+                d_fun("main", &vec![], d_call("foo", &vec!(Num(1))), 0),
+                d_fun("foo", &vec!("num".into()), d_var("num"), 0)
+            )))
+            .unwrap(),
+            [
+                "(module\n  \
+                (type (;0;) (func (result i32)))\n  ",
+                "(type (;1;) (func (param i32) (result i32)))\n  ",
+                &function_format(
+                    "i32.const 1\n\
+                    call 1",
+                    '0'
+                ),
+                &custom_fun_format(
+                    "(param i32) (result i32)",
+                    "(local i32)\n\
+                    local.get 0",
+                    '1'
+                ),
                 "(export \"main\" (func 0))\n)"
             ]
             .concat()
