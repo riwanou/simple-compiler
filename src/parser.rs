@@ -51,7 +51,318 @@ fn eat_newline(iterator: &mut Peekable<Iter<Token>>) {
 }
 
 /*
-    Prefix postfix prefix conversion
+    Parser
+*/
+
+pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
+    let mut iterator = tokens.iter().peekable();
+    let mut defs = VecDeque::new();
+    let mut errors = vec![];
+    let mut contain_main = false;
+
+    // recursive parsing
+    // put main function as first element
+    loop {
+        match parse_def(&mut iterator) {
+            Ok(res) => match res {
+                Some(def) => {
+                    // search for entry point "main"
+                    match def.clone() {
+                        Def::Fun(name, _, _, _) if name == "main" => {
+                            contain_main = true;
+                            defs.push_front(def);
+                        }
+                        _ => defs.push_back(def),
+                    };
+                    continue;
+                }
+                None => break,
+            },
+            Err(err) => errors.push(err),
+        }
+        break;
+    }
+
+    // no entry point..
+    if !contain_main {
+        errors.push(parse_error("progam need a 'main' entry function"));
+    }
+
+    // show parsed list of definition
+    if defs.len() > 0 && errors.len() == 0 {
+        println!("{:?}", defs);
+        Ok(defs.into())
+    } else {
+        Err(errors)
+    }
+}
+
+// parse parameters between parentheses
+fn parse_param(
+    iterator: &mut Peekable<Iter<Token>>,
+    fun_name: &str,
+) -> Result<Vec<String>, String> {
+    let mut params = vec![];
+    loop {
+        if let Some(Token { token_type, .. }) = iterator.peek() {
+            match token_type {
+                TokenType::Var(par_name) => {
+                    params.push(par_name.to_string());
+                    iterator.next();
+                    eat_newline(iterator);
+                    // there should be a comma afterward if more parameters
+                    // else break
+                    if let Some(Token { token_type, .. }) = iterator.peek() {
+                        match token_type {
+                            TokenType::Comma => continue,
+                            TokenType::RightParen => break,
+                            _ => {
+                                return Err(parse_error(&format!(
+                                    "function declaration expect comma between parameters: '{}'",
+                                    fun_name
+                                )))
+                            }
+                        }
+                    }
+                }
+                TokenType::Comma => {
+                    iterator.next();
+                    eat_newline(iterator);
+                    // there should be a variable afterward, test for it
+                    if let Some(Token { token_type, .. }) = iterator.peek() {
+                        if matches!(token_type, TokenType::Var(_)) {
+                            continue;
+                        }
+                    }
+                    return Err(parse_error(&format!(
+                        "function declaration expect parameter after comma: '{}'",
+                        fun_name
+                    )));
+                }
+                _ => break,
+            };
+        }
+        break;
+    }
+    Ok(params)
+}
+
+// parse definitions
+fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String> {
+    eat_newline(iterator);
+
+    // end of file?
+    if iterator.peek().is_none() {
+        return Ok(None);
+    }
+
+    // fun keyword
+    eat_token(
+        &TokenType::Fun,
+        "missing token 'fun' in function declaration",
+        iterator,
+    )?;
+    eat_newline(iterator);
+
+    // get function name
+    let fun_name;
+    if let Some(Token { token_type, .. }) = iterator.next() {
+        match token_type {
+            TokenType::Var(name) => fun_name = name,
+            _ => return Err(parse_error("invalid variable name in function declaration")),
+        }
+    } else {
+        return Err(parse_error("missing function name in function declaration"));
+    }
+    eat_newline(iterator);
+
+    // parameters
+    // left parenthese
+    eat_token(
+        &TokenType::LeftParen,
+        "missing token '(' in function declaration",
+        iterator,
+    )?;
+
+    // get params
+    eat_newline(iterator);
+    let params = parse_param(iterator, &fun_name)?;
+
+    // right parenthese
+    eat_token(
+        &TokenType::RightParen,
+        "missing token ')' in function declaration",
+        iterator,
+    )?;
+    eat_newline(iterator);
+
+    // get function body
+    let mut locals = HashSet::new();
+    let body = parse_exp(iterator, &mut locals)?;
+    eat_newline(iterator);
+
+    // get end token
+    eat_token(
+        &TokenType::End,
+        &format!(
+            "missing token 'end' in function declaration: '{}'",
+            fun_name
+        ),
+        iterator,
+    )?;
+
+    Ok(Some(Def::Fun(
+        fun_name.to_string(),
+        params,
+        Box::new(body),
+        locals.len(),
+    )))
+}
+
+// parse expression
+fn parse_exp(
+    iterator: &mut Peekable<Iter<Token>>,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    loop {
+        if let Some(Token { token_type, .. }) = iterator.next() {
+            return match token_type {
+                TokenType::NewLine => continue,
+                TokenType::Num(n) => parse_num(iterator, *n, var_set),
+                TokenType::Var(var) => parse_var(iterator, var, var_set),
+                TokenType::Let => parse_let(iterator, None, var_set),
+                TokenType::LeftParen => {
+                    let tokens = collect_binary(iterator, Some(TokenType::LeftParen), var_set)?;
+                    parse_binary(tokens)
+                }
+                TokenType::True | TokenType::False => {
+                    parse_boolean(iterator, Some(token_type.clone()), var_set)
+                }
+                TokenType::If => parse_ite(iterator, var_set),
+                _ => return Err(parse_error("invalid expression at beginning")),
+            };
+        } else {
+            return Err(parse_error("Nothing to parse"));
+        }
+    }
+}
+
+// parse boolean
+fn parse_boolean(
+    iterator: &mut Peekable<Iter<Token>>,
+    token_type: Option<TokenType>,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    match iterator.clone().peek() {
+        Some(_) => {
+            let tokens = collect_binary(iterator, token_type, var_set)?;
+            parse_binary(tokens)
+        }
+        None => Ok(Exp::Bool(matches!(token_type, Some(TokenType::True)))),
+    }
+}
+
+// parse num
+fn parse_num(
+    iterator: &mut Peekable<Iter<Token>>,
+    current: i32,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
+    match iterator.clone().peek() {
+        Some(_) => {
+            let tokens = collect_binary(iterator, Some(TokenType::Num(current)), var_set)?;
+            parse_binary(tokens)
+        }
+        None => Ok(Exp::Num(current)),
+    }
+}
+
+// collect binary tokens
+fn collect_binary(
+    iterator: &mut Peekable<Iter<Token>>,
+    left: Option<TokenType>,
+    var_set: &mut HashSet<String>,
+) -> Result<Vec<TokenType>, String> {
+    let mut exp_tokens = Vec::<TokenType>::new();
+
+    // only right parent ')' if a left one was opened before
+    // if not, then just quit, sub expression should not infer with parent one
+    let mut opened_paren = 0;
+
+    if let Some(token_type) = left {
+        if matches!(token_type, TokenType::LeftParen) {
+            opened_paren += 1;
+        }
+        exp_tokens.push(token_type);
+    }
+
+    // is binary operation token?
+    loop {
+        if let Some(Token { token_type, .. }) = iterator.peek() {
+            match token_type.clone() {
+                // bool
+                TokenType::True
+                | TokenType::False
+                | TokenType::And
+                | TokenType::Or
+                | TokenType::Eq
+                | TokenType::Sma
+                | TokenType::Gta
+                // num
+                | TokenType::Num(_)
+                | TokenType::Add
+                | TokenType::Sub
+                | TokenType::Mult
+                | TokenType::Div
+                // group
+                | TokenType::LeftParen
+                | TokenType::RightParen => {
+                    match token_type {
+                        TokenType::LeftParen => opened_paren += 1,
+                        TokenType::RightParen => {
+                            if opened_paren <= 0 {
+                                break;
+                            }
+                            opened_paren -= 1;
+                        }
+                        _ => ()
+                    };
+                    if let Some(next) = iterator.next() {
+                        exp_tokens.push(next.token_type.clone())
+                    }
+                }
+                // var, test if function application
+                TokenType::Var(var_name) => {
+                    if let Some(next) = iterator.next() {
+                        if let Some(Token {token_type, ..}) = iterator.peek() {
+                            if matches!(token_type, TokenType::LeftParen) {
+                                let token = collect_call(iterator, &var_name, var_set)?;
+                                exp_tokens.push(token);
+                                continue;
+                            }
+
+                        }
+                        exp_tokens.push(next.token_type.clone());
+                    }
+                }
+                _ => break,
+            }
+        } else {
+            break;
+        }
+    }
+
+    // check if the number of parentheses is matching
+    if opened_paren != 0 {
+        return Err(parse_error("number of parenthesis not matching"));
+    }
+
+    Ok(exp_tokens)
+}
+
+/*
+    - Parse binary -
+    prefix postfix prefix conversion
     use shunting yard algorithm to convert prefix to postfix
     then convert back to prefix
 */
@@ -81,7 +392,7 @@ pub fn is_binary(token_type: &TokenType) -> bool {
     )
 }
 
-pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
+pub fn parse_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     let mut operator_stack = Vec::<TokenType>::new();
     let mut postfix = Vec::<TokenType>::new();
     let mut prefix_stack = Vec::<Exp>::new();
@@ -92,7 +403,7 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
             // basic
             TokenType::Num(_)
             | TokenType::Var(_)
-            | TokenType::Call(_)
+            | TokenType::Call(_, _)
             | TokenType::True
             | TokenType::False => postfix.push(t),
             // num & num
@@ -161,7 +472,7 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
             // var
             TokenType::Var(var) => prefix_stack.push(Exp::Var(var)),
             // call
-            TokenType::Call(fun_name) => prefix_stack.push(Exp::Call(fun_name)),
+            TokenType::Call(fun_name, args) => prefix_stack.push(Exp::Call(fun_name, args)),
             _ => (),
         }
     }
@@ -176,239 +487,6 @@ pub fn convert_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
     }
 }
 
-/*
-    Parser
-*/
-
-pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
-    let mut iterator = tokens.iter().peekable();
-    let mut defs = VecDeque::new();
-    let mut errors = vec![];
-    let mut contain_main = false;
-
-    // recursive parsing
-    // put main function as first element
-    loop {
-        match parse_def(&mut iterator) {
-            Ok(res) => match res {
-                Some(def) => {
-                    // search for entry point "main"
-                    match def.clone() {
-                        Def::Fun(name, _, _) if name == "main" => {
-                            contain_main = true;
-                            defs.push_front(def);
-                        }
-                        _ => defs.push_back(def),
-                    };
-                    continue;
-                }
-                None => break,
-            },
-            Err(err) => errors.push(err),
-        }
-        break;
-    }
-
-    // no entry point..
-    if !contain_main {
-        errors.push(parse_error("progam need a 'main' entry function"));
-    }
-
-    // show parsed list of definition
-    if defs.len() > 0 && errors.len() == 0 {
-        println!("{:?}", defs);
-        Ok(defs.into())
-    } else {
-        Err(errors)
-    }
-}
-
-// parse definitions
-fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String> {
-    eat_newline(iterator);
-
-    // end of file?
-    if iterator.peek().is_none() {
-        return Ok(None);
-    }
-
-    // fun keyword
-    eat_token(
-        &TokenType::Fun,
-        "missing token 'fun' in function declaration",
-        iterator,
-    )?;
-    eat_newline(iterator);
-
-    // get function name
-    let fun_name;
-    if let Some(Token { token_type, .. }) = iterator.next() {
-        match token_type {
-            TokenType::Var(name) => fun_name = name,
-            _ => return Err(parse_error("invalid variable name in function declaration")),
-        }
-    } else {
-        return Err(parse_error("missing function name in function declaration"));
-    }
-    eat_newline(iterator);
-
-    // parameters
-    // left parenthese
-    eat_token(
-        &TokenType::LeftParen,
-        "missing token '(' in function declaration",
-        iterator,
-    )?;
-    eat_newline(iterator);
-
-    // right parenthese
-    eat_token(
-        &TokenType::RightParen,
-        "missing token ')' in function declaration",
-        iterator,
-    )?;
-    eat_newline(iterator);
-
-    // get function body
-    let mut locals = HashSet::new();
-    let body = parse_exp(iterator, &mut locals)?;
-    eat_newline(iterator);
-
-    // get end token
-    eat_token(
-        &TokenType::End,
-        &format!(
-            "missing token 'end' in function declaration: '{}'",
-            fun_name
-        ),
-        iterator,
-    )?;
-
-    Ok(Some(Def::Fun(
-        fun_name.to_string(),
-        Box::new(body),
-        locals.len(),
-    )))
-}
-
-// parse expression
-fn parse_exp(
-    iterator: &mut Peekable<Iter<Token>>,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
-    loop {
-        if let Some(Token { token_type, .. }) = iterator.next() {
-            return match token_type {
-                TokenType::NewLine => continue,
-                TokenType::Num(n) => parse_num(iterator, *n),
-                TokenType::Var(var) => parse_var(iterator, var, var_set),
-                TokenType::Let => parse_let(iterator, None, var_set),
-                TokenType::LeftParen => parse_binary(iterator, Some(TokenType::LeftParen)),
-                TokenType::True | TokenType::False => {
-                    parse_boolean(iterator, Some(token_type.clone()))
-                }
-                TokenType::If => parse_ite(iterator, var_set),
-                _ => return Err(parse_error("invalid expression at beginning")),
-            };
-        } else {
-            return Err(parse_error("Nothing to parse"));
-        }
-    }
-}
-
-// parse boolean
-fn parse_boolean(
-    iterator: &mut Peekable<Iter<Token>>,
-    token_type: Option<TokenType>,
-) -> Result<Exp, String> {
-    match iterator.clone().peek() {
-        Some(_) => parse_binary(iterator, token_type),
-        None => Ok(Exp::Bool(matches!(token_type, Some(TokenType::True)))),
-    }
-}
-
-// parse num
-fn parse_num(iterator: &mut Peekable<Iter<Token>>, current: i32) -> Result<Exp, String> {
-    match iterator.clone().peek() {
-        Some(_) => parse_binary(iterator, Some(TokenType::Num(current))),
-        None => Ok(Exp::Num(current)),
-    }
-}
-
-// parse binary
-fn parse_binary(
-    iterator: &mut Peekable<Iter<Token>>,
-    left: Option<TokenType>,
-) -> Result<Exp, String> {
-    let mut exp_tokens = Vec::<TokenType>::new();
-
-    if let Some(token_type) = left {
-        exp_tokens.push(token_type);
-    }
-
-    // is binary operation token?
-    loop {
-        match iterator.peek() {
-            Some(peek) => match peek.token_type.clone() {
-                // bool
-                TokenType::True
-                | TokenType::False
-                | TokenType::And
-                | TokenType::Or
-                | TokenType::Eq
-                | TokenType::Sma
-                | TokenType::Gta
-                // num
-                | TokenType::Num(_)
-                | TokenType::Add
-                | TokenType::Sub
-                | TokenType::Mult
-                | TokenType::Div
-                // group
-                | TokenType::LeftParen
-                | TokenType::RightParen => {
-                    if let Some(next) = iterator.next() {
-                        exp_tokens.push(next.token_type.clone())
-                    }
-                }
-                // var, test if function application
-                TokenType::Var(var_name) => {
-                    if let Some(next) = iterator.next() {
-                        if let Some(Token {token_type, ..}) = iterator.peek() {
-                            if matches!(token_type, TokenType::LeftParen) {
-                                let token = parse_call(iterator, &var_name)?;
-                                exp_tokens.push(token);
-                                continue;
-                            }
-
-                        }
-                        exp_tokens.push(next.token_type.clone());
-                    }
-                }
-                _ => break,
-            },
-            None => break,
-        }
-    }
-
-    // check if the number of parentheses is matching
-    let mut left_paren = 0;
-    let mut right_paren = 0;
-
-    exp_tokens.iter().for_each(|token_type| match token_type {
-        TokenType::LeftParen => left_paren += 1,
-        TokenType::RightParen => right_paren += 1,
-        _ => (),
-    });
-
-    if left_paren - right_paren != 0 {
-        return Err(parse_error("number of parenthesis not matching"));
-    }
-
-    // convert to expression
-    convert_binary(exp_tokens)
-}
-
 // parse if-then-else
 fn parse_ite(
     iterator: &mut Peekable<Iter<Token>>,
@@ -417,7 +495,7 @@ fn parse_ite(
     eat_newline(iterator);
 
     // boolean condition
-    let condition = parse_boolean(iterator, None)?;
+    let condition = parse_boolean(iterator, None, var_set)?;
     eat_newline(iterator);
 
     // then
@@ -453,45 +531,106 @@ fn parse_ite(
     ))
 }
 
-// convert call tokenized version to expression
-fn call_to_exp(iterator: &mut Peekable<Iter<Token>>, token: TokenType) -> Result<Exp, String> {
+// parse arguments
+fn parse_args(
+    iterator: &mut Peekable<Iter<Token>>,
+    fun_name: &str,
+    var_set: &mut HashSet<String>,
+) -> Result<Vec<Exp>, String> {
+    let mut args = vec![];
+    loop {
+        if let Some(Token { token_type, .. }) = iterator.peek() {
+            match token_type {
+                TokenType::Comma => {
+                    iterator.next();
+                    eat_newline(iterator);
+                    // there should be an expression afterward, test for it
+                    if let Some(Token { token_type, .. }) = iterator.peek() {
+                        if !matches!(token_type, TokenType::RightParen) {
+                            continue;
+                        }
+                    }
+                    return Err(parse_error(&format!(
+                        "function application expect arguments after comma: '{}'",
+                        fun_name
+                    )));
+                }
+                // end of args list
+                TokenType::RightParen => break,
+                // if is expression
+                _ => {
+                    let arg = parse_exp(iterator, var_set)?;
+                    args.push(arg);
+                    eat_newline(iterator);
+                    // there should be a comma afterward if more parameters
+                    // else break
+                    if let Some(Token { token_type, .. }) = iterator.peek() {
+                        match token_type {
+                            TokenType::Comma => continue,
+                            TokenType::RightParen => break,
+                            _ => {
+                                return Err(parse_error(&format!(
+                                    "function application expect comma between parameters: '{}'",
+                                    fun_name
+                                )))
+                            }
+                        }
+                    }
+                }
+            };
+        }
+        break;
+    }
+    Ok(args)
+}
+
+// collect function call token
+fn collect_call(
+    iterator: &mut Peekable<Iter<Token>>,
+    fun_name: &str,
+    var_set: &mut HashSet<String>,
+) -> Result<TokenType, String> {
+    // left parenthese
+    eat_token(
+        &TokenType::LeftParen,
+        "missing token '(' in function application",
+        iterator,
+    )?;
+
+    eat_newline(iterator);
+    let args = parse_args(iterator, fun_name, var_set)?;
+
+    // right parenthese
+    eat_token(
+        &TokenType::RightParen,
+        "missing token ')' in function application",
+        iterator,
+    )?;
+
+    Ok(TokenType::Call(fun_name.to_string(), args))
+}
+
+// parse function call tokens
+fn parse_call(
+    iterator: &mut Peekable<Iter<Token>>,
+    token: TokenType,
+    var_set: &mut HashSet<String>,
+) -> Result<Exp, String> {
     // check if there is binary operation afterward, if so then let parse_binary handle it
     if let Some(peek) = iterator.clone().peek() {
         // (binary expression)
         if is_binary(&peek.token_type) {
-            return parse_binary(iterator, Some(token));
+            let tokens = collect_binary(iterator, Some(token), var_set)?;
+            return parse_binary(tokens);
         }
     }
 
     // else simply return
     match token {
-        TokenType::Call(fun_name) => Ok(Exp::Call(fun_name.to_string())),
+        TokenType::Call(fun_name, args) => Ok(Exp::Call(fun_name.to_string(), args)),
         _ => Err(parse_error("wrong token type for function application")),
     }
 }
-
-// parse as tokenized version function call
-fn parse_call(iterator: &mut Peekable<Iter<Token>>, fun_name: &str) -> Result<TokenType, String> {
-    // eat parameter till right parent ')'
-    loop {
-        //can have end of line between parameters
-        eat_newline(iterator);
-        if let Some(Token { token_type, .. }) = iterator.next() {
-            match token_type {
-                TokenType::RightParen => break,
-                _ => continue,
-            }
-        }
-        return Err(parse_error(&format!(
-            "function application open '(' but not close ')' for '{}'",
-            fun_name
-        )));
-    }
-
-    Ok(TokenType::Call(fun_name.to_string()))
-}
-
-// parse function call
 
 // parse var
 fn parse_var(
@@ -506,12 +645,13 @@ fn parse_var(
         }
         // variable + 1 (binary expression)
         if is_binary(&peek.token_type) {
-            return parse_binary(iterator, Some(TokenType::Var(var.to_string())));
+            let tokens = collect_binary(iterator, Some(TokenType::Var(var.to_string())), var_set)?;
+            return parse_binary(tokens);
         }
         // variable() (function application)
         if peek.token_type == TokenType::LeftParen {
-            let token = parse_call(iterator, var)?;
-            return call_to_exp(iterator, token);
+            let token = collect_call(iterator, var, var_set)?;
+            return parse_call(iterator, token, var_set);
         }
     }
 
@@ -592,8 +732,7 @@ mod tests {
     #[test]
     fn nums() {
         let tokens = scan("fun main() 10 end").unwrap();
-        println!("TOKENS: {:?}", tokens);
-        assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", Num(10), 0))))
+        assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", &vec![], Num(10), 0))))
     }
 
     #[test]
@@ -601,7 +740,7 @@ mod tests {
         let tokens = scan("fun main() 10 - 5 end").unwrap();
         assert_eq!(
             parse(&tokens),
-            Ok(vec!(d_fun("main", d_sub(Num(10), Num(5)), 0)))
+            Ok(vec!(d_fun("main", &vec![], d_sub(Num(10), Num(5)), 0)))
         )
     }
 
@@ -612,6 +751,7 @@ mod tests {
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
+                &vec![],
                 d_and(Bool(true), d_or(Bool(false), Bool(true))),
                 0
             )))
@@ -621,11 +761,11 @@ mod tests {
     #[test]
     fn numeric_bool() {
         let tokens = scan("fun main() (1<2) & (2==2) & (3>2) end").unwrap();
-        println!("TOKEN: {:?}", tokens);
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
+                &vec![],
                 d_and(
                     d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
                     d_gta(Num(3), Num(2))
@@ -642,6 +782,7 @@ mod tests {
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
+                &vec![],
                 d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)),
                 0
             )))
@@ -657,6 +798,7 @@ mod tests {
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
+                &vec![],
                 d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)),
                 0
             )))
@@ -670,6 +812,7 @@ mod tests {
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
+                &vec![],
                 d_let(
                     "a",
                     d_add(Num(1), Num(2)),
@@ -690,8 +833,8 @@ mod tests {
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", d_let("a", Num(1), d_var("a")), 1),
-                d_fun("a", Num(1), 0)
+                d_fun("main", &vec![], d_let("a", Num(1), d_var("a")), 1),
+                d_fun("a", &vec![], Num(1), 0)
             ))
         )
     }
@@ -702,9 +845,24 @@ mod tests {
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", d_add(d_call("a"), Num(1)), 0),
-                d_fun("a", Num(1), 0)
+                d_fun("main", &vec![], d_add(d_call("a", &vec![]), Num(1)), 0),
+                d_fun("a", &vec![], Num(1), 0)
             ))
+        )
+    }
+
+    #[test]
+    fn fun_par() {
+        let tokens =
+            scan("\nfun \nmain\n(\nfoo\n\n ,\n fee \n)\n main(\n1\n,\n2\n)\n end").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(vec!(d_fun(
+                "main",
+                &vec!("foo".into(), "fee".into()),
+                d_call("main", &vec!(Num(1), Num(2))),
+                0
+            )))
         )
     }
 }

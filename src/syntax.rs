@@ -22,15 +22,15 @@ pub enum Exp {
     // if-then-else
     Ite(Box<Exp>, Box<Exp>, Box<Exp>),
     // call
-    Call(String),
+    Call(String, Vec<Exp>),
 }
 
 // definition
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum Def {
-    // function
-    Fun(String, Box<Exp>, usize),
+    // function (name, arguments, body, number of local variables)
+    Fun(String, Vec<String>, Box<Exp>, usize),
 }
 
 // desugars methods to avoid box boilerplates
@@ -86,8 +86,8 @@ pub mod desugars {
 
     // call
     #[allow(dead_code)]
-    pub fn d_call(fun_name: &str) -> Exp {
-        Exp::Call(fun_name.to_string())
+    pub fn d_call(fun_name: &str, param: &Vec<Exp>) -> Exp {
+        Exp::Call(fun_name.to_string(), param.to_vec())
     }
 
     // var
@@ -103,7 +103,7 @@ pub mod desugars {
     // definition
     // function
     #[allow(dead_code)]
-    pub fn d_fun(name: &str, body: Exp, locals_nb: usize) -> Def {
-        Def::Fun(name.to_string(), Box::new(body), locals_nb)
+    pub fn d_fun(name: &str, args: &Vec<String>, body: Exp, locals_nb: usize) -> Def {
+        Def::Fun(name.to_string(), args.to_vec(), Box::new(body), locals_nb)
     }
 }

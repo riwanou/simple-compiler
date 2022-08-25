@@ -54,7 +54,7 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
         types.function(vec![], vec![ValType::I32]);
         functions.function(fun_env.counter);
         match program[i].to_owned() {
-            Def::Fun(name, _, _) => fun_env.add(&name),
+            Def::Fun(name, params, _, _) => fun_env.add(&name),
         };
     }
 
@@ -88,7 +88,7 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 // each function has it own environment
 pub fn codegen_fun(f: Def, fun_env: &Env) -> Function {
     match f {
-        Def::Fun(_, body, locals_nb) => {
+        Def::Fun(_, _, body, locals_nb) => {
             // generate function
             let locals = vec![(locals_nb as u32, ValType::I32)];
             let mut fun = Function::new(locals);
@@ -145,7 +145,7 @@ pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env, fun_env: &Env) {
             f.instruction(Instruction::End);
         }
         // call
-        Exp::Call(fun_name) => {
+        Exp::Call(fun_name, args) => {
             match fun_env.get(&fun_name) {
                 Some(id) => f.instruction(Instruction::Call(*id)),
                 _ => panic!("codegen: try to call inexistent function name"),
@@ -208,6 +208,7 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(&mut vec!(d_fun(
                 "main",
+                &vec![],
                 d_add(Num(10), d_add(Num(20), Num(5))),
                 0
             ))))
@@ -227,6 +228,7 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(&vec!(d_fun(
                 "main",
+                &vec![],
                 d_ite(Bool(false), Num(1), Num(2)),
                 0
             ))))
@@ -247,6 +249,7 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(&vec!(d_fun(
                 "main",
+                &vec![],
                 d_let("a", Num(1), Var("a".to_string())),
                 0
             ))))
@@ -263,8 +266,8 @@ mod tests {
     fn multiple_fun() {
         assert_eq!(
             print_bytes(&codegen(&vec!(
-                d_fun("main", Num(1), 0),
-                d_fun("foo", Num(2), 0)
+                d_fun("main", &vec![], Num(1), 0),
+                d_fun("foo", &vec![], Num(2), 0)
             )))
             .unwrap(),
             [
@@ -283,8 +286,8 @@ mod tests {
     fn call_fun() {
         assert_eq!(
             print_bytes(&codegen(&vec!(
-                d_fun("main", d_call("foo"), 0),
-                d_fun("foo", Num(2), 0)
+                d_fun("main", &vec![], d_call("foo", &vec![]), 0),
+                d_fun("foo", &vec![], Num(2), 0)
             )))
             .unwrap(),
             [

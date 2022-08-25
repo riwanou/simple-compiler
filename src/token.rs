@@ -1,4 +1,5 @@
 use crate::scanner::Scanner;
+use crate::syntax::Exp;
 use std::fmt;
 
 /*
@@ -60,7 +61,7 @@ pub enum TokenType {
     RightParen,
     // Function
     Fun,
-    Call(String),
+    Call(String, Vec<Exp>),
     Comma,
     // End
     End,

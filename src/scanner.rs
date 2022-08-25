@@ -37,24 +37,6 @@ impl Scanner<'_> {
         self.iter.next()
     }
 
-    fn eat(&mut self, text: &str, correct_token: &str) -> Result<(), Token> {
-        for c in text.chars() {
-            match self.next() {
-                Some(current) if current == c => (),
-                _ => {
-                    return Err(error_token(
-                        &format!(
-                            "Unexpected character: {}, did you mean {}?",
-                            c, correct_token
-                        ),
-                        self,
-                    ))
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn peek(&mut self) -> Option<&char> {
         self.iter.peek()
     }
