@@ -53,9 +53,8 @@ pub fn codegen(program: &Vec<Def>, localsnb_table: &HashMap<String, usize>) -> V
     for i in 0..program.len() {
         functions.function(fun_env.counter);
         match program[i].to_owned() {
-            Def::Fun(name, _, _) => {
-                let nb_locals = localsnb_table.get(&name).unwrap();
-                types.function(vec![ValType::I32; *nb_locals], vec![ValType::I32]);
+            Def::Fun(name, params, _) => {
+                types.function(vec![ValType::I32; params.len()], vec![ValType::I32]);
                 fun_env.add(&name);
             }
         };
@@ -84,6 +83,7 @@ pub fn codegen(program: &Vec<Def>, localsnb_table: &HashMap<String, usize>) -> V
 
     // encode module
     let bytes = module.finish();
+
     return bytes;
 }
 

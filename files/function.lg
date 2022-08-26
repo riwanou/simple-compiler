@@ -15,7 +15,7 @@ end
 
 fun main()
     let num = foo()
-    if num > 2 then
+    if num > 2 then  
         (num + 3) * 2
     else
         0

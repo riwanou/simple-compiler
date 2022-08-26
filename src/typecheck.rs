@@ -95,18 +95,15 @@ pub fn typecheck_exp(
             &mut errors,
         )?,
         // boolean binary
-        Exp::And(a, b) | Exp::Or(a, b) => {
-            println!("A: {:?}, B: {:?}", a, b);
-            typecheck_binary(
-                a,
-                b,
-                env,
-                fun_env,
-                Type::Bool,
-                "mixing of boolean and other type in binary operation",
-                &mut errors,
-            )?
-        }
+        Exp::And(a, b) | Exp::Or(a, b) => typecheck_binary(
+            a,
+            b,
+            env,
+            fun_env,
+            Type::Bool,
+            "mixing of boolean and other type in binary operation",
+            &mut errors,
+        )?,
         // comparison
         Exp::Sma(a, b) | Exp::Gta(a, b) | Exp::Eq(a, b) => {
             typecheck_binary(
