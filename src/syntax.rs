@@ -6,6 +6,7 @@ pub enum Exp {
     Num(i32),
     // variable
     Var(String),
+    Assign(String, Box<Exp>, Box<Exp>),
     Let(String, Box<Exp>, Box<Exp>),
     // Binary op
     // boolean
@@ -102,6 +103,10 @@ pub mod desugars {
     #[allow(dead_code)]
     pub fn d_var(var: &str) -> Exp {
         Exp::Var(var.to_string())
+    }
+    #[allow(dead_code)]
+    pub fn d_assign(var: &str, val: Exp, body: Exp) -> Exp {
+        Exp::Assign(var.to_string(), Box::new(val), Box::new(body))
     }
     #[allow(dead_code)]
     pub fn d_let(var: &str, val: Exp, body: Exp) -> Exp {

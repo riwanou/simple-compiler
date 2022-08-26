@@ -37,7 +37,7 @@ impl Env {
 }
 
 // codegen given program
-pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
+pub fn codegen(program: &Vec<Def>, localsnb_table: &HashMap<String, usize>) -> Vec<u8> {
     // create module
     let mut module = Module::new();
 
@@ -53,8 +53,9 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
     for i in 0..program.len() {
         functions.function(fun_env.counter);
         match program[i].to_owned() {
-            Def::Fun(name, params, _) => {
-                types.function(vec![ValType::I32; params.len()], vec![ValType::I32]);
+            Def::Fun(name, _, _) => {
+                let nb_locals = localsnb_table.get(&name).unwrap();
+                types.function(vec![ValType::I32; *nb_locals], vec![ValType::I32]);
                 fun_env.add(&name);
             }
         };
@@ -74,7 +75,7 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 
     // generate functions
     for i in 0..program.len() {
-        let fun = codegen_fun(program[i].to_owned(), &fun_env);
+        let fun = codegen_fun(program[i].to_owned(), &fun_env, &localsnb_table);
         codes.function(&fun);
     }
 
@@ -88,11 +89,12 @@ pub fn codegen(program: &Vec<Def>) -> Vec<u8> {
 
 // codegen function
 // each function has it own environment
-pub fn codegen_fun(f: Def, fun_env: &Env) -> Function {
+pub fn codegen_fun(f: Def, fun_env: &Env, localsnb_table: &HashMap<String, usize>) -> Function {
     match f {
-        Def::Fun(_, param, body) => {
+        Def::Fun(name, param, body) => {
             // generate function
-            let locals = vec![((param.len() + 10) as u32, ValType::I32)];
+            let nb_locals = *localsnb_table.get(&name).unwrap();
+            let locals = vec![(nb_locals as u32, ValType::I32)];
             let mut fun = Function::new(locals);
             // populate env with function params
             let mut env = Env::new();
@@ -171,7 +173,7 @@ pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env, fun_env: &Env) {
                 _ => panic!("codegen: try to call inexistent variable name"),
             };
         }
-        Exp::Let(str, val, body) => {
+        Exp::Let(str, val, body) | Exp::Assign(str, val, body) => {
             let var = match env.get(&str) {
                 Some(value) => value.clone(),
                 None => env.add(&str),
@@ -229,11 +231,14 @@ mod tests {
     #[test]
     fn add() {
         assert_eq!(
-            print_bytes(&codegen(&mut vec!(d_fun(
-                "main",
-                &vec![],
-                d_add(Num(10), d_add(Num(20), Num(5))),
-            ))))
+            print_bytes(&codegen(
+                &mut vec!(d_fun(
+                    "main",
+                    &vec![],
+                    d_add(Num(10), d_add(Num(20), Num(5))),
+                )),
+                &HashMap::from([("main".into(), 0)])
+            ))
             .unwrap(),
             code_format(
                 "i32.const 10\n\
@@ -248,11 +253,10 @@ mod tests {
     #[test]
     fn ite() {
         assert_eq!(
-            print_bytes(&codegen(&vec!(d_fun(
-                "main",
-                &vec![],
-                d_ite(Bool(false), Num(1), Num(2)),
-            ))))
+            print_bytes(&codegen(
+                &vec!(d_fun("main", &vec![], d_ite(Bool(false), Num(1), Num(2)),)),
+                &HashMap::from([("main".into(), 0)])
+            ))
             .unwrap(),
             code_format(
                 "i32.const 0\n\
@@ -268,11 +272,14 @@ mod tests {
     #[test]
     fn var() {
         assert_eq!(
-            print_bytes(&codegen(&vec!(d_fun(
-                "main",
-                &vec![],
-                d_let("a", Num(1), Var("a".to_string())),
-            ))))
+            print_bytes(&codegen(
+                &vec!(d_fun(
+                    "main",
+                    &vec![],
+                    d_let("a", Num(1), Var("a".to_string())),
+                )),
+                &HashMap::from([("main".into(), 0)])
+            ))
             .unwrap(),
             code_format(
                 "i32.const 1\n\
@@ -285,10 +292,13 @@ mod tests {
     #[test]
     fn multiple_fun() {
         assert_eq!(
-            print_bytes(&codegen(&vec!(
-                d_fun("main", &vec![], Num(1)),
-                d_fun("foo", &vec![], Num(2))
-            )))
+            print_bytes(&codegen(
+                &vec!(
+                    d_fun("main", &vec![], Num(1)),
+                    d_fun("foo", &vec![], Num(2))
+                ),
+                &HashMap::from([("main".into(), 0), ("foo".into(), 0)])
+            ))
             .unwrap(),
             [
                 "(module\n  \
@@ -305,10 +315,13 @@ mod tests {
     #[test]
     fn call_fun() {
         assert_eq!(
-            print_bytes(&codegen(&vec!(
-                d_fun("main", &vec![], d_call("foo", &vec![])),
-                d_fun("foo", &vec![], Num(2))
-            )))
+            print_bytes(&codegen(
+                &vec!(
+                    d_fun("main", &vec![], d_call("foo", &vec![])),
+                    d_fun("foo", &vec![], Num(2))
+                ),
+                &HashMap::from([("main".into(), 0), ("foo".into(), 0)])
+            ))
             .unwrap(),
             [
                 "(module\n  \
@@ -325,10 +338,13 @@ mod tests {
     #[test]
     fn fun_param() {
         assert_eq!(
-            print_bytes(&codegen(&vec!(
-                d_fun("main", &vec![], d_call("foo", &vec!(Num(1)))),
-                d_fun("foo", &vec!("num".into()), d_var("num"))
-            )))
+            print_bytes(&codegen(
+                &vec!(
+                    d_fun("main", &vec![], d_call("foo", &vec!(Num(1)))),
+                    d_fun("foo", &vec!("num".into()), d_var("num"))
+                ),
+                &HashMap::from([("main".into(), 0), ("foo".into(), 1)])
+            ))
             .unwrap(),
             [
                 "(module\n  \

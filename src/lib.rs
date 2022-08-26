@@ -17,7 +17,7 @@ pub fn compile(contents: &str) -> Result<Vec<u8>, Vec<String>> {
     // variables name key set
     let program = parse(&tokens)?;
     // typecheck program
-    typecheck(&program)?;
+    let localsnb_table = typecheck(&program)?;
     // generate program
-    return Ok(codegen(&program));
+    return Ok(codegen(&program, &localsnb_table));
 }

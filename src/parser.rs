@@ -612,7 +612,7 @@ fn parse_var(iterator: &mut Peekable<Iter<Token>>, var: &str) -> Result<Exp, Str
     if let Some(peek) = iterator.clone().peek() {
         // variable = expression
         if peek.token_type == TokenType::Assign {
-            return parse_let(iterator, Some(var));
+            return parse_assign(iterator, Some(var));
         }
         // variable + 1 (binary expression)
         if is_binary(&peek.token_type) {
@@ -629,8 +629,11 @@ fn parse_var(iterator: &mut Peekable<Iter<Token>>, var: &str) -> Result<Exp, Str
     Ok(Exp::Var(var.to_string()))
 }
 
-// parse let
-fn parse_let(iterator: &mut Peekable<Iter<Token>>, var_name: Option<&str>) -> Result<Exp, String> {
+// parse assign (= exp \n body)
+fn assign_helper(
+    iterator: &mut Peekable<Iter<Token>>,
+    var_name: Option<&str>,
+) -> Result<(String, Exp, Exp), String> {
     // get variable name
     eat_newline(iterator);
     let var;
@@ -640,10 +643,10 @@ fn parse_let(iterator: &mut Peekable<Iter<Token>>, var_name: Option<&str>) -> Re
             if let Some(Token { token_type, .. }) = iterator.next() {
                 match token_type {
                     TokenType::Var(var_name) => var = var_name,
-                    _ => return Err(parse_error("invalid variable name in let assignment")),
+                    _ => return Err(parse_error("invalid variable name in assignment")),
                 }
             } else {
-                return Err(parse_error("missing variable name in let assignment"));
+                return Err(parse_error("missing variable name in assignment"));
             }
         }
     }
@@ -661,10 +664,10 @@ fn parse_let(iterator: &mut Peekable<Iter<Token>>, var_name: Option<&str>) -> Re
     // stop at end of the line
     let val = parse_exp(iterator)?;
 
-    // get body of let
+    // get body of let or assign
     eat_token(
         &TokenType::NewLine,
-        "missing new line between let assignement and body",
+        "missing new line after assignement for body",
         iterator,
     )?;
 
@@ -672,12 +675,26 @@ fn parse_let(iterator: &mut Peekable<Iter<Token>>, var_name: Option<&str>) -> Re
         Ok(res) => res,
         Err(err) => {
             return Err(parse_error(&format!(
-                "missing body in let assignement for variable `{}`, body - {}",
+                "invalid body in assignement for variable `{}`, body - {}",
                 var, err
             )))
         }
     };
 
+    Ok((var.to_owned(), val, body))
+}
+
+fn parse_assign(
+    iterator: &mut Peekable<Iter<Token>>,
+    var_name: Option<&str>,
+) -> Result<Exp, String> {
+    let (var, val, body) = assign_helper(iterator, var_name)?;
+    Ok(Exp::Assign(var.to_string(), Box::new(val), Box::new(body)))
+}
+
+// parse let
+fn parse_let(iterator: &mut Peekable<Iter<Token>>, var_name: Option<&str>) -> Result<Exp, String> {
+    let (var, val, body) = assign_helper(iterator, var_name)?;
     Ok(Exp::Let(var.to_string(), Box::new(val), Box::new(body)))
 }
 
@@ -772,7 +789,7 @@ mod tests {
                 d_let(
                     "a",
                     d_add(Num(1), Num(2)),
-                    d_let(
+                    d_assign(
                         "a",
                         d_add(Var("a".to_string()), Num(2)),
                         Var("a".to_string())

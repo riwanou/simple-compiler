@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 pub struct FunInfo {
     params: HashMap<String, Type>,
-    nb_locals: u32,
+    nb_locals: usize,
 }
 
 // errors handling
@@ -28,12 +28,27 @@ pub fn assert_type(current: &Type, expected: &Type, error_msg: &str) -> Result<(
 
 // typecheck given program
 // return a mapping giving number of locals of each funtions
-pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, u32>, Vec<String>> {
+pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, usize>, Vec<String>> {
     let mut env = HashMap::<String, FunInfo>::new();
 
-    // only check main function at first
-    let main = program[0].to_owned();
-    typecheck_def(&main, &mut env)?;
+    // first pass, add functions definition
+    program.iter().for_each(|def| match def {
+        Def::Fun(name, params, _) => {
+            let info = FunInfo {
+                params: params
+                    .iter()
+                    .map(|param| (param.to_string(), Type::Int))
+                    .collect(),
+                nb_locals: 0,
+            };
+            env.insert(name.to_string(), info);
+        }
+    });
+
+    // second pass, typecheck functions
+    for def in program {
+        typecheck_def(&def, &mut env)?;
+    }
 
     let funs_locals = env
         .iter()
@@ -45,23 +60,74 @@ pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, u32>, Vec<String>
 
 pub fn typecheck_def(fun: &Def, env: &mut HashMap<String, FunInfo>) -> Result<(), Vec<String>> {
     match fun {
-        Def::Fun(name, params, body) => {
-            let mut var_env = HashMap::<String, Type>::new();
+        Def::Fun(name, _, body) => {
+            let fun = env
+                .get_mut(name)
+                .expect("problem in typecheck, function not in env");
+            let mut var_env = fun.params.clone();
             typecheck_exp(body, &mut var_env)?;
-            let info = FunInfo {
-                params: params
-                    .iter()
-                    .map(|param| (param.to_string(), Type::Int))
-                    .collect(),
-                nb_locals: (params.len() + var_env.len()) as u32,
-            };
-            env.insert(name.to_string(), info);
+            fun.nb_locals = var_env.len();
         }
     };
     Ok(())
 }
 
-// binary expression helper
+// expression
+pub fn typecheck_exp(exp: &Exp, env: &mut HashMap<String, Type>) -> Result<Type, Vec<String>> {
+    let mut errors = vec![];
+    let exp_type = match exp {
+        // basics
+        Exp::Num(_) => Type::Int,
+        Exp::Bool(_) => Type::Bool,
+        Exp::Var(var_name) => typecheck_var(var_name, env)?,
+        // numeric binary
+        Exp::Add(a, b) | Exp::Sub(a, b) | Exp::Div(a, b) | Exp::Mult(a, b) => typecheck_binary(
+            a,
+            b,
+            env,
+            Type::Int,
+            "mixing of numeric and other type in binary operation",
+            &mut errors,
+        )?,
+        // boolean binary
+        Exp::And(a, b) | Exp::Or(a, b) => {
+            println!("A: {:?}, B: {:?}", a, b);
+            typecheck_binary(
+                a,
+                b,
+                env,
+                Type::Bool,
+                "mixing of boolean and other type in binary operation",
+                &mut errors,
+            )?
+        }
+        // comparison
+        Exp::Sma(a, b) | Exp::Gta(a, b) | Exp::Eq(a, b) => {
+            typecheck_binary(
+                a,
+                b,
+                env,
+                Type::Int,
+                "mixing of numeric and other type in comparison",
+                &mut errors,
+            )?;
+            Type::Bool
+        }
+        // if then else
+        Exp::Ite(cond, the, els) => typecheck_ite(cond, the, els, env, &mut errors)?,
+        // variables
+        Exp::Assign(var, val, body) => typecheck_assign(var, val, body, env, &mut errors)?,
+        Exp::Let(var, val, body) => typecheck_let(var, val, body, env)?,
+        // call
+        Exp::Call(_, _) => Type::Int,
+    };
+    if errors.len() > 0 {
+        return Err(errors);
+    }
+    Ok(exp_type)
+}
+
+// binary
 pub fn typecheck_binary(
     a: &Exp,
     b: &Exp,
@@ -77,51 +143,88 @@ pub fn typecheck_binary(
     Ok(right)
 }
 
-// expression
-pub fn typecheck_exp(exp: &Exp, _env: &mut HashMap<String, Type>) -> Result<Type, Vec<String>> {
-    let mut errors = vec![];
-    let exp_type = match exp {
-        Exp::Num(_) => Type::Int,
-        Exp::Bool(_) => Type::Bool,
-        // numeric binary
-        Exp::Add(a, b) | Exp::Sub(a, b) | Exp::Div(a, b) | Exp::Mult(a, b) => typecheck_binary(
-            a,
-            b,
-            _env,
-            Type::Int,
-            "mixing of numeric and other type in binary operation",
-            &mut errors,
-        )?,
-        // boolean binary
-        Exp::And(a, b) | Exp::Or(a, b) => {
-            println!("A: {:?}, B: {:?}", a, b);
-            typecheck_binary(
-                a,
-                b,
-                _env,
-                Type::Bool,
-                "mixing of boolean and other type in binary operation",
-                &mut errors,
-            )?
-        }
-        // comparison
-        Exp::Sma(a, b) | Exp::Gta(a, b) | Exp::Eq(a, b) => {
-            typecheck_binary(
-                a,
-                b,
-                _env,
-                Type::Int,
-                "mixing of numeric and other type in comparison",
-                &mut errors,
-            )?;
-            Type::Bool
-        }
-        _ => panic!("need typecheck implementation for this expression"),
-    };
-    if errors.len() > 0 {
-        return Err(errors);
+// variables
+fn typecheck_var(var_name: &str, env: &mut HashMap<String, Type>) -> Result<Type, Vec<String>> {
+    match env.get(var_name) {
+        Some(var_type) => Ok(var_type.to_owned()),
+        None => Err(vec![type_error(&format!(
+            "variable not defined: '{}'",
+            var_name
+        ))]),
     }
-    Ok(exp_type)
+}
+
+// variable assignement
+// define for first time variable
+fn typecheck_let(
+    var: &str,
+    val: &Exp,
+    body: &Exp,
+    env: &mut HashMap<String, Type>,
+) -> Result<Type, Vec<String>> {
+    // infer variable type
+    let val_type = typecheck_exp(val, env)?;
+    env.insert(var.to_string(), val_type.clone());
+    // check body with modified env
+    typecheck_exp(body, env)?;
+    // return variable type
+    Ok(val_type)
+}
+
+// assign
+// mutate variable
+fn typecheck_assign(
+    var: &str,
+    val: &Exp,
+    body: &Exp,
+    env: &mut HashMap<String, Type>,
+    errors: &mut Vec<String>,
+) -> Result<Type, Vec<String>> {
+    // check if variable was defined before
+    let var_type = match env.get(var) {
+        Some(res) => res.clone(),
+        None => {
+            return Err(vec![format!(
+                "try to assign non defined variable: '{}'",
+                var
+            )])
+        }
+    };
+    // infer variable type
+    let val_type = typecheck_exp(val, env)?;
+    // type must stricly be equal to defined one
+    collect_error(
+        errors,
+        &assert_type(
+            &val_type,
+            &var_type,
+            &format!("assign and defined type mismatch: '{}'", var),
+        ),
+    );
+    // check body with modified env
+    typecheck_exp(body, env)?;
+    // return variable type
+    Ok(val_type)
+}
+
+// if then else
+fn typecheck_ite(
+    cond: &Exp,
+    _the: &Exp,
+    _els: &Exp,
+    env: &mut HashMap<String, Type>,
+    errors: &mut Vec<String>,
+) -> Result<Type, Vec<String>> {
+    let cond_type = typecheck_exp(cond, env)?;
+    collect_error(
+        errors,
+        &assert_type(
+            &cond_type,
+            &Type::Bool,
+            "boolean expected for condition in if block",
+        ),
+    );
+    Ok(cond_type)
 }
 
 #[cfg(test)]
@@ -163,6 +266,26 @@ mod tests {
             Err(vec!(type_error(
                 "mixing of numeric and other type in comparison"
             )))
+        );
+    }
+
+    #[test]
+    pub fn non_defined_var() {
+        let tokens = scan("fun main() let foo = 2 \n fee end").unwrap();
+        let program = parse(&tokens).unwrap();
+        assert_eq!(
+            typecheck(&program),
+            Err(vec!(type_error("variable not defined: 'fee'")))
+        );
+    }
+
+    #[test]
+    pub fn assign_var() {
+        let tokens = scan("fun main() let foo = 2 \n foo = true \n foo end").unwrap();
+        let program = parse(&tokens).unwrap();
+        assert_eq!(
+            typecheck(&program),
+            Err(vec!(type_error("assign and defined type mismatch: 'foo'")))
         );
     }
 }
