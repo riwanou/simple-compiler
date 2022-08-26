@@ -1,5 +1,4 @@
 use core::slice::Iter;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::vec;
@@ -68,7 +67,12 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
                 Some(def) => {
                     // search for entry point "main"
                     match def.clone() {
-                        Def::Fun(name, _, _, _) if name == "main" => {
+                        Def::Fun(name, param, _) if name == "main" => {
+                            // main function should not have parameters
+                            if param.len() > 0 {
+                                errors
+                                    .push(parse_error("main function should not have parameters"));
+                            }
                             contain_main = true;
                             defs.push_front(def);
                         }
@@ -90,7 +94,6 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
 
     // show parsed list of definition
     if defs.len() > 0 && errors.len() == 0 {
-        println!("{:?}", defs);
         Ok(defs.into())
     } else {
         Err(errors)
@@ -197,13 +200,8 @@ fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String
     eat_newline(iterator);
 
     // get function body
-    let mut locals = HashSet::new();
-    // add param variables to locals
-    params.iter().for_each(|param| {
-        locals.insert(param.to_string());
-    });
     // get body
-    let body = parse_exp(iterator, &mut locals)?;
+    let body = parse_exp(iterator)?;
     eat_newline(iterator);
 
     // get end token
@@ -216,34 +214,26 @@ fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String
         iterator,
     )?;
 
-    Ok(Some(Def::Fun(
-        fun_name.to_string(),
-        params,
-        Box::new(body),
-        locals.len(),
-    )))
+    Ok(Some(Def::Fun(fun_name.to_string(), params, Box::new(body))))
 }
 
 // parse expression
-fn parse_exp(
-    iterator: &mut Peekable<Iter<Token>>,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
+fn parse_exp(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
     loop {
         if let Some(Token { token_type, .. }) = iterator.next() {
             return match token_type {
                 TokenType::NewLine => continue,
-                TokenType::Num(n) => parse_num(iterator, *n, var_set),
-                TokenType::Var(var) => parse_var(iterator, var, var_set),
-                TokenType::Let => parse_let(iterator, None, var_set),
+                TokenType::Num(n) => parse_num(iterator, *n),
+                TokenType::Var(var) => parse_var(iterator, var),
+                TokenType::Let => parse_let(iterator, None),
                 TokenType::LeftParen => {
-                    let tokens = collect_binary(iterator, Some(TokenType::LeftParen), var_set)?;
+                    let tokens = collect_binary(iterator, Some(TokenType::LeftParen))?;
                     parse_binary(tokens)
                 }
                 TokenType::True | TokenType::False => {
-                    parse_boolean(iterator, Some(token_type.clone()), var_set)
+                    parse_boolean(iterator, Some(token_type.clone()))
                 }
-                TokenType::If => parse_ite(iterator, var_set),
+                TokenType::If => parse_ite(iterator),
                 _ => return Err(parse_error("invalid expression at beginning")),
             };
         } else {
@@ -256,11 +246,10 @@ fn parse_exp(
 fn parse_boolean(
     iterator: &mut Peekable<Iter<Token>>,
     token_type: Option<TokenType>,
-    var_set: &mut HashSet<String>,
 ) -> Result<Exp, String> {
     match iterator.clone().peek() {
         Some(_) => {
-            let tokens = collect_binary(iterator, token_type, var_set)?;
+            let tokens = collect_binary(iterator, token_type)?;
             parse_binary(tokens)
         }
         None => Ok(Exp::Bool(matches!(token_type, Some(TokenType::True)))),
@@ -268,14 +257,10 @@ fn parse_boolean(
 }
 
 // parse num
-fn parse_num(
-    iterator: &mut Peekable<Iter<Token>>,
-    current: i32,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
+fn parse_num(iterator: &mut Peekable<Iter<Token>>, current: i32) -> Result<Exp, String> {
     match iterator.clone().peek() {
         Some(_) => {
-            let tokens = collect_binary(iterator, Some(TokenType::Num(current)), var_set)?;
+            let tokens = collect_binary(iterator, Some(TokenType::Num(current)))?;
             parse_binary(tokens)
         }
         None => Ok(Exp::Num(current)),
@@ -286,7 +271,6 @@ fn parse_num(
 fn collect_binary(
     iterator: &mut Peekable<Iter<Token>>,
     left: Option<TokenType>,
-    var_set: &mut HashSet<String>,
 ) -> Result<Vec<TokenType>, String> {
     let mut exp_tokens = Vec::<TokenType>::new();
 
@@ -341,7 +325,7 @@ fn collect_binary(
                     if let Some(next) = iterator.next() {
                         if let Some(Token {token_type, ..}) = iterator.peek() {
                             if matches!(token_type, TokenType::LeftParen) {
-                                let token = collect_call(iterator, &var_name, var_set)?;
+                                let token = collect_call(iterator, &var_name)?;
                                 exp_tokens.push(token);
                                 continue;
                             }
@@ -493,14 +477,11 @@ pub fn parse_binary(tokens: Vec<TokenType>) -> Result<Exp, String> {
 }
 
 // parse if-then-else
-fn parse_ite(
-    iterator: &mut Peekable<Iter<Token>>,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
+fn parse_ite(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
     eat_newline(iterator);
 
     // boolean condition
-    let condition = parse_boolean(iterator, None, var_set)?;
+    let condition = parse_boolean(iterator, None)?;
     eat_newline(iterator);
 
     // then
@@ -509,7 +490,7 @@ fn parse_ite(
         "missing token 'then' in condition",
         iterator,
     )?;
-    let then_block = parse_exp(iterator, var_set)?;
+    let then_block = parse_exp(iterator)?;
     eat_newline(iterator);
 
     // else
@@ -518,7 +499,7 @@ fn parse_ite(
         "missing token 'else' in condition",
         iterator,
     )?;
-    let else_block = parse_exp(iterator, var_set)?;
+    let else_block = parse_exp(iterator)?;
     eat_newline(iterator);
 
     // end
@@ -537,11 +518,7 @@ fn parse_ite(
 }
 
 // parse arguments
-fn parse_args(
-    iterator: &mut Peekable<Iter<Token>>,
-    fun_name: &str,
-    var_set: &mut HashSet<String>,
-) -> Result<Vec<Exp>, String> {
+fn parse_args(iterator: &mut Peekable<Iter<Token>>, fun_name: &str) -> Result<Vec<Exp>, String> {
     let mut args = vec![];
     loop {
         if let Some(Token { token_type, .. }) = iterator.peek() {
@@ -564,7 +541,7 @@ fn parse_args(
                 TokenType::RightParen => break,
                 // if is expression
                 _ => {
-                    let arg = parse_exp(iterator, var_set)?;
+                    let arg = parse_exp(iterator)?;
                     args.push(arg);
                     eat_newline(iterator);
                     // there should be a comma afterward if more parameters
@@ -590,11 +567,7 @@ fn parse_args(
 }
 
 // collect function call token
-fn collect_call(
-    iterator: &mut Peekable<Iter<Token>>,
-    fun_name: &str,
-    var_set: &mut HashSet<String>,
-) -> Result<TokenType, String> {
+fn collect_call(iterator: &mut Peekable<Iter<Token>>, fun_name: &str) -> Result<TokenType, String> {
     // left parenthese
     eat_token(
         &TokenType::LeftParen,
@@ -603,7 +576,7 @@ fn collect_call(
     )?;
 
     eat_newline(iterator);
-    let args = parse_args(iterator, fun_name, var_set)?;
+    let args = parse_args(iterator, fun_name)?;
 
     // right parenthese
     eat_token(
@@ -616,16 +589,12 @@ fn collect_call(
 }
 
 // parse function call tokens
-fn parse_call(
-    iterator: &mut Peekable<Iter<Token>>,
-    token: TokenType,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
+fn parse_call(iterator: &mut Peekable<Iter<Token>>, token: TokenType) -> Result<Exp, String> {
     // check if there is binary operation afterward, if so then let parse_binary handle it
     if let Some(peek) = iterator.clone().peek() {
         // (binary expression)
         if is_binary(&peek.token_type) {
-            let tokens = collect_binary(iterator, Some(token), var_set)?;
+            let tokens = collect_binary(iterator, Some(token))?;
             return parse_binary(tokens);
         }
     }
@@ -638,41 +607,29 @@ fn parse_call(
 }
 
 // parse var
-fn parse_var(
-    iterator: &mut Peekable<Iter<Token>>,
-    var: &str,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
+fn parse_var(iterator: &mut Peekable<Iter<Token>>, var: &str) -> Result<Exp, String> {
     if let Some(peek) = iterator.clone().peek() {
         // variable = expression
         if peek.token_type == TokenType::Assign {
-            return parse_let(iterator, Some(var), var_set);
+            return parse_let(iterator, Some(var));
         }
         // variable + 1 (binary expression)
         if is_binary(&peek.token_type) {
-            let tokens = collect_binary(iterator, Some(TokenType::Var(var.to_string())), var_set)?;
+            let tokens = collect_binary(iterator, Some(TokenType::Var(var.to_string())))?;
             return parse_binary(tokens);
         }
         // variable() (function application)
         if peek.token_type == TokenType::LeftParen {
-            let token = collect_call(iterator, var, var_set)?;
-            return parse_call(iterator, token, var_set);
+            let token = collect_call(iterator, var)?;
+            return parse_call(iterator, token);
         }
-    }
-
-    if var_set.get(var).is_none() {
-        return Err(parse_error(&format!("variable '{}' does not exist", var)));
     }
 
     Ok(Exp::Var(var.to_string()))
 }
 
 // parse let
-fn parse_let(
-    iterator: &mut Peekable<Iter<Token>>,
-    var_name: Option<&str>,
-    var_set: &mut HashSet<String>,
-) -> Result<Exp, String> {
+fn parse_let(iterator: &mut Peekable<Iter<Token>>, var_name: Option<&str>) -> Result<Exp, String> {
     // get variable name
     eat_newline(iterator);
     let var;
@@ -701,10 +658,7 @@ fn parse_let(
 
     // value to assign to variable
     // stop at end of the line
-    let val = parse_exp(iterator, var_set)?;
-
-    // add to var set
-    var_set.insert(var.to_string());
+    let val = parse_exp(iterator)?;
 
     // get body of let
     eat_token(
@@ -713,7 +667,7 @@ fn parse_let(
         iterator,
     )?;
 
-    let body = match parse_exp(iterator, var_set) {
+    let body = match parse_exp(iterator) {
         Ok(res) => res,
         Err(err) => {
             return Err(parse_error(&format!(
@@ -737,7 +691,7 @@ mod tests {
     #[test]
     fn nums() {
         let tokens = scan("fun main() 10 end").unwrap();
-        assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", &vec![], Num(10), 0))))
+        assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", &vec![], Num(10)))))
     }
 
     #[test]
@@ -745,7 +699,7 @@ mod tests {
         let tokens = scan("fun main() 10 - 5 end").unwrap();
         assert_eq!(
             parse(&tokens),
-            Ok(vec!(d_fun("main", &vec![], d_sub(Num(10), Num(5)), 0)))
+            Ok(vec!(d_fun("main", &vec![], d_sub(Num(10), Num(5)))))
         )
     }
 
@@ -758,7 +712,6 @@ mod tests {
                 "main",
                 &vec![],
                 d_and(Bool(true), d_or(Bool(false), Bool(true))),
-                0
             )))
         )
     }
@@ -775,7 +728,6 @@ mod tests {
                     d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
                     d_gta(Num(3), Num(2))
                 ),
-                0
             )))
         )
     }
@@ -789,7 +741,6 @@ mod tests {
                 "main",
                 &vec![],
                 d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)),
-                0
             )))
         )
     }
@@ -805,7 +756,6 @@ mod tests {
                 "main",
                 &vec![],
                 d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)),
-                0
             )))
         )
     }
@@ -827,7 +777,6 @@ mod tests {
                         Var("a".to_string())
                     )
                 ),
-                1
             )))
         )
     }
@@ -838,8 +787,8 @@ mod tests {
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", &vec![], d_let("a", Num(1), d_var("a")), 1),
-                d_fun("a", &vec![], Num(1), 0)
+                d_fun("main", &vec![], d_let("a", Num(1), d_var("a"))),
+                d_fun("a", &vec![], Num(1))
             ))
         )
     }
@@ -850,8 +799,8 @@ mod tests {
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", &vec![], d_add(d_call("a", &vec![]), Num(1)), 0),
-                d_fun("a", &vec![], Num(1), 0)
+                d_fun("main", &vec![], d_add(d_call("a", &vec![]), Num(1))),
+                d_fun("a", &vec![], Num(1))
             ))
         )
     }
@@ -866,7 +815,6 @@ mod tests {
                 "main",
                 &vec!("foo".into(), "fee".into()),
                 d_add(d_call("main", &vec!(Num(1), Num(2))), d_var("fee")),
-                2
             )))
         )
     }

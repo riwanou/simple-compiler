@@ -29,8 +29,16 @@ pub enum Exp {
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum Def {
-    // function (name, arguments, body, number of local variables)
-    Fun(String, Vec<String>, Box<Exp>, usize),
+    // function (name, arguments, body
+    Fun(String, Vec<String>, Box<Exp>),
+}
+
+// types
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone)]
+pub enum Type {
+    Int,
+    Bool,
 }
 
 // desugars methods to avoid box boilerplates
@@ -103,7 +111,7 @@ pub mod desugars {
     // definition
     // function
     #[allow(dead_code)]
-    pub fn d_fun(name: &str, args: &Vec<String>, body: Exp, locals_nb: usize) -> Def {
-        Def::Fun(name.to_string(), args.to_vec(), Box::new(body), locals_nb)
+    pub fn d_fun(name: &str, args: &Vec<String>, body: Exp) -> Def {
+        Def::Fun(name.to_string(), args.to_vec(), Box::new(body))
     }
 }
