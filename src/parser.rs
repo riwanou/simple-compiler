@@ -359,9 +359,10 @@ fn collect_binary(
 // prescedence priority
 pub fn prescedence_op(op: &TokenType) -> u32 {
     match op {
-        TokenType::And | TokenType::Or | TokenType::Eq | TokenType::Sma | TokenType::Gta => 1,
-        TokenType::Add | TokenType::Sub => 1,
-        TokenType::Mult | TokenType::Div => 2,
+        TokenType::And | TokenType::Or => 1,
+        TokenType::Eq | TokenType::Sma | TokenType::Gta => 2,
+        TokenType::Add | TokenType::Sub => 3,
+        TokenType::Mult | TokenType::Div => 4,
         _ => 0,
     }
 }
@@ -717,15 +718,15 @@ mod tests {
     }
 
     #[test]
-    fn numeric_bool() {
-        let tokens = scan("fun main() (1<2) & (2==2) & (3>2) end").unwrap();
+    fn binary_bool() {
+        let tokens = scan("fun main() 1 < 2 & 2 + 1 == 2 & 3> 2 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
                 &vec![],
                 d_and(
-                    d_and(d_sma(Num(1), Num(2)), d_eq(Num(2), Num(2))),
+                    d_and(d_sma(Num(1), Num(2)), d_eq(d_add(Num(2), Num(1)), Num(2))),
                     d_gta(Num(3), Num(2))
                 ),
             )))
@@ -807,13 +808,12 @@ mod tests {
 
     #[test]
     fn fun_par() {
-        let tokens =
-            scan("\nfun \nmain\n(\nfoo\n\n ,\n fee \n)\n main(\n1\n,\n2\n) + fee \n end").unwrap();
+        let tokens = scan("\nfun \nmain\n(\n\n)\n main(\n1\n,\n2\n) + fee \n end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
                 "main",
-                &vec!("foo".into(), "fee".into()),
+                &vec![],
                 d_add(d_call("main", &vec!(Num(1), Num(2))), d_var("fee")),
             )))
         )

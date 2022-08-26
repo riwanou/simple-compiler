@@ -61,6 +61,7 @@ pub fn typecheck_def(fun: &Def, env: &mut HashMap<String, FunInfo>) -> Result<()
     Ok(())
 }
 
+// binary expression helper
 pub fn typecheck_binary(
     a: &Exp,
     b: &Exp,
@@ -76,6 +77,7 @@ pub fn typecheck_binary(
     Ok(right)
 }
 
+// expression
 pub fn typecheck_exp(exp: &Exp, _env: &mut HashMap<String, Type>) -> Result<Type, Vec<String>> {
     let mut errors = vec![];
     let exp_type = match exp {
@@ -91,14 +93,29 @@ pub fn typecheck_exp(exp: &Exp, _env: &mut HashMap<String, Type>) -> Result<Type
             &mut errors,
         )?,
         // boolean binary
-        Exp::And(a, b) | Exp::Or(a, b) | Exp::Eq(a, b) => typecheck_binary(
-            a,
-            b,
-            _env,
-            Type::Bool,
-            "mixing of boolean and other type in binary operation",
-            &mut errors,
-        )?,
+        Exp::And(a, b) | Exp::Or(a, b) => {
+            println!("A: {:?}, B: {:?}", a, b);
+            typecheck_binary(
+                a,
+                b,
+                _env,
+                Type::Bool,
+                "mixing of boolean and other type in binary operation",
+                &mut errors,
+            )?
+        }
+        // comparison
+        Exp::Sma(a, b) | Exp::Gta(a, b) | Exp::Eq(a, b) => {
+            typecheck_binary(
+                a,
+                b,
+                _env,
+                Type::Int,
+                "mixing of numeric and other type in comparison",
+                &mut errors,
+            )?;
+            Type::Bool
+        }
         _ => panic!("need typecheck implementation for this expression"),
     };
     if errors.len() > 0 {
@@ -133,6 +150,18 @@ mod tests {
             typecheck(&program),
             Err(vec!(type_error(
                 "mixing of boolean and other type in binary operation"
+            )))
+        );
+    }
+
+    #[test]
+    pub fn comparison() {
+        let tokens = scan("fun main() true & 1 + 2 < true & 2 == 2 end").unwrap();
+        let program = parse(&tokens).unwrap();
+        assert_eq!(
+            typecheck(&program),
+            Err(vec!(type_error(
+                "mixing of numeric and other type in comparison"
             )))
         );
     }
