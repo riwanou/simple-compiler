@@ -31,7 +31,7 @@ pub enum Exp {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Def {
     // function (name, arguments, body
-    Fun(String, Vec<String>, Box<Exp>),
+    Fun(String, Vec<(Type, String)>, Box<Exp>),
 }
 
 // types
@@ -116,7 +116,7 @@ pub mod desugars {
     // definition
     // function
     #[allow(dead_code)]
-    pub fn d_fun(name: &str, args: &Vec<String>, body: Exp) -> Def {
+    pub fn d_fun(name: &str, args: &Vec<(Type, String)>, body: Exp) -> Def {
         Def::Fun(name.to_string(), args.to_vec(), Box::new(body))
     }
 }

@@ -5,6 +5,7 @@ use std::vec;
 
 use crate::syntax::Def;
 use crate::syntax::Exp;
+use crate::syntax::Type;
 use crate::token::Token;
 use crate::token::TokenType;
 
@@ -100,19 +101,65 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
     }
 }
 
+// parse type
+fn parse_type(iterator: &mut Peekable<Iter<Token>>) -> Option<Type> {
+    if let Some(Token { token_type, .. }) = iterator.next() {
+        match token_type {
+            TokenType::Int => Some(Type::Int),
+            TokenType::Bool => Some(Type::Bool),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
 // parse parameters between parentheses
 fn parse_param(
     iterator: &mut Peekable<Iter<Token>>,
     fun_name: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<(Type, String)>, String> {
     let mut params = vec![];
     loop {
         if let Some(Token { token_type, .. }) = iterator.peek() {
             match token_type {
-                TokenType::Var(par_name) => {
-                    params.push(par_name.to_string());
-                    iterator.next();
-                    eat_newline(iterator);
+                TokenType::Int | TokenType::Bool => {
+                    // get type of param
+                    let param_type;
+                    let param_name;
+                    // type must be bind with param name
+                    match parse_type(iterator) {
+                        Some(var_type) => {
+                            param_type = var_type;
+                            eat_newline(iterator);
+                        }
+                        None => {
+                            return Err(parse_error(&format!(
+                                "error while parsing parameter type: '{}'",
+                                fun_name
+                            )))
+                        }
+                    };
+                    // check if var after type
+                    if let Some(Token { token_type, .. }) = iterator.peek() {
+                        match token_type {
+                            TokenType::Var(var_name) => {
+                                param_name = var_name;
+                                iterator.next();
+                                eat_newline(iterator);
+                            }
+                            _ => {
+                                return Err(parse_error(&format!(
+                                    "function declaration expect parameter name after type: '{}'",
+                                    fun_name
+                                )))
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                    // add parameter to list
+                    params.push((param_type, param_name.to_string()));
                     // there should be a comma afterward if more parameters
                     // else break
                     if let Some(Token { token_type, .. }) = iterator.peek() {
@@ -133,12 +180,12 @@ fn parse_param(
                     eat_newline(iterator);
                     // there should be a variable afterward, test for it
                     if let Some(Token { token_type, .. }) = iterator.peek() {
-                        if matches!(token_type, TokenType::Var(_)) {
+                        if matches!(token_type, TokenType::Int | TokenType::Bool) {
                             continue;
                         }
                     }
                     return Err(parse_error(&format!(
-                        "function declaration expect parameter after comma: '{}'",
+                        "function declaration expect parameter type after comma: '{}'",
                         fun_name
                     )));
                 }
@@ -833,6 +880,23 @@ mod tests {
                 &vec![],
                 d_add(d_call("main", &vec!(Num(1), Num(2))), d_var("fee")),
             )))
+        )
+    }
+
+    #[test]
+    fn simple_type() {
+        let tokens =
+            scan("fun main() fee(10, true) end fun fee(\nint\n a\n, bool b) a end").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(vec!(
+                d_fun("main", &vec![], d_call("fee", &vec!(Num(10), Bool(true)))),
+                d_fun(
+                    "fee",
+                    &vec!((Type::Int, "a".into()), (Type::Bool, "b".into())),
+                    d_var("a")
+                )
+            ))
         )
     }
 }

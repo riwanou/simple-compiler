@@ -98,7 +98,7 @@ pub fn codegen_fun(f: Def, fun_env: &Env, localsnb_table: &HashMap<String, usize
             let mut fun = Function::new(locals);
             // populate env with function params
             let mut env = Env::new();
-            param.iter().for_each(|param| {
+            param.iter().for_each(|(_, param)| {
                 env.add(&param);
             });
             codegen_exp(&mut fun, *body, &mut env, fun_env);
@@ -189,6 +189,7 @@ pub fn codegen_exp(f: &mut Function, e: Exp, env: &mut Env, fun_env: &Env) {
 mod tests {
     use super::*;
     use crate::syntax::desugars::*;
+    use crate::syntax::Type;
     use pretty_assertions::assert_eq;
     use wasmprinter::print_bytes;
     use Exp::*;
@@ -341,7 +342,7 @@ mod tests {
             print_bytes(&codegen(
                 &vec!(
                     d_fun("main", &vec![], d_call("foo", &vec!(Num(1)))),
-                    d_fun("foo", &vec!("num".into()), d_var("num"))
+                    d_fun("foo", &vec!((Type::Int, "num".into())), d_var("num"))
                 ),
                 &HashMap::from([("main".into(), 0), ("foo".into(), 1)])
             ))

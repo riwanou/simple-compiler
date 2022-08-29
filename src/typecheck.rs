@@ -2,7 +2,7 @@ use crate::syntax::{Def, Exp, Type};
 use std::{collections::HashMap, vec};
 
 pub struct FunInfo {
-    params: HashMap<String, Type>,
+    params: Vec<(Type, String)>,
     nb_locals: usize,
 }
 
@@ -35,10 +35,7 @@ pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, usize>, Vec<Strin
     program.iter().for_each(|def| match def {
         Def::Fun(name, params, _) => {
             let info = FunInfo {
-                params: params
-                    .iter()
-                    .map(|param| (param.to_string(), Type::Int))
-                    .collect(),
+                params: params.clone(),
                 nb_locals: 0,
             };
             env.insert(name.to_string(), info);
@@ -64,7 +61,11 @@ pub fn typecheck_def(fun: &Def, env: &mut HashMap<String, FunInfo>) -> Result<()
             let fun = env
                 .get(name)
                 .expect("problem in typecheck, function not in env");
-            let mut var_env = fun.params.clone();
+            let mut var_env: HashMap<String, Type> = fun
+                .params
+                .iter()
+                .map(|(p_type, p_var)| (p_var.to_string(), p_type.to_owned()))
+                .collect();
             typecheck_exp(body, &mut var_env, env)?;
             env.get_mut(name).unwrap().nb_locals = var_env.len();
         }
@@ -153,7 +154,7 @@ fn typecheck_var(var_name: &str, env: &mut HashMap<String, Type>) -> Result<Type
     match env.get(var_name) {
         Some(var_type) => Ok(var_type.to_owned()),
         None => Err(vec![type_error(&format!(
-            "variable not defined: '{}'",
+            "variable not defined: {}",
             var_name
         ))]),
     }
@@ -190,12 +191,7 @@ fn typecheck_assign(
     // check if variable was defined before
     let var_type = match env.get(var) {
         Some(res) => res.clone(),
-        None => {
-            return Err(vec![format!(
-                "try to assign non defined variable: '{}'",
-                var
-            )])
-        }
+        None => return Err(vec![format!("try to assign non defined variable: {}", var)]),
     };
     // infer variable type
     let val_type = typecheck_exp(val, env, fun_env)?;
@@ -205,7 +201,7 @@ fn typecheck_assign(
         &assert_type(
             &val_type,
             &var_type,
-            &format!("assign and defined type mismatch: '{}'", var),
+            &format!("assign and defined type mismatch: {}", var),
         ),
     );
     // check body with modified env
@@ -262,23 +258,34 @@ fn typecheck_call(
         Some(info) => info.clone(),
         None => {
             return Err(vec![type_error(&format!(
-                "try to call undefined function: '{}'",
+                "try to call undefined function: {}",
                 fun_name
             ))])
         }
     };
 
-    // check if args match parameters
+    // check if number of arguments match
     if args.len() != fun_info.params.len() {
         return Err(vec![type_error(&format!(
-            "try to call with mismatch number of arguments: '{}'",
+            "try to call with mismatch number of arguments: {}",
             fun_name
         ))]);
     }
 
-    // check if arguments are valid
-    for arg in args {
-        typecheck_exp(arg, env, fun_env)?;
+    // check if args match parameters type
+    for (i, arg) in args.iter().enumerate() {
+        let arg_type = typecheck_exp(arg, env, fun_env)?;
+        collect_error(
+            errors,
+            &assert_type(
+                &arg_type,
+                &fun_info.params[i].0,
+                &format!(
+                    "same type expected for parameter and argument: {} in {}",
+                    fun_info.params[i].1, fun_name
+                ),
+            ),
+        );
     }
 
     Ok(Type::Int)
@@ -332,7 +339,7 @@ mod tests {
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
-            Err(vec!(type_error("variable not defined: 'fee'")))
+            Err(vec!(type_error("variable not defined: fee")))
         );
     }
 
@@ -342,7 +349,7 @@ mod tests {
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
-            Err(vec!(type_error("assign and defined type mismatch: 'foo'")))
+            Err(vec!(type_error("assign and defined type mismatch: foo")))
         );
     }
 
@@ -360,22 +367,34 @@ mod tests {
 
     #[test]
     pub fn call_inexistent() {
-        let tokens = scan("fun main() foo() end fun fee(n) n end").unwrap();
+        let tokens = scan("fun main() foo() end fun fee(int n) n end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
-            Err(vec!(type_error("try to call undefined function: 'foo'")))
+            Err(vec!(type_error("try to call undefined function: foo")))
         );
     }
 
     #[test]
     pub fn call_mismatch() {
-        let tokens = scan("fun main() foo() end fun foo(n) n end").unwrap();
+        let tokens = scan("fun main() foo() end fun foo(int n) n end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
             Err(vec!(type_error(
-                "try to call with mismatch number of arguments: 'foo'"
+                "try to call with mismatch number of arguments: foo"
+            )))
+        );
+    }
+
+    #[test]
+    pub fn param_type() {
+        let tokens = scan("fun main() foo(true) end fun foo(int n) n end").unwrap();
+        let program = parse(&tokens).unwrap();
+        assert_eq!(
+            typecheck(&program),
+            Err(vec!(type_error(
+                "same type expected for parameter and argument: foo"
             )))
         );
     }

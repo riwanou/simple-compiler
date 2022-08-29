@@ -5,7 +5,7 @@ fun main()
     fact(6, 1)
 end
 
-fun fact(n, one)
+fun fact(int n, int one)
     if n == 1 | n < 1 then
         one
     else

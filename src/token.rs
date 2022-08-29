@@ -7,7 +7,7 @@ use std::fmt;
     program -> [def]
 
     (function definition)
-    def -> "fun" var(p1, p2, ..) exp "end"
+    def -> 'fun' var(int p1, bool p2, ..) exp 'end'
 
     /!\ - [value expression have to be inline]
     (expression)
@@ -21,17 +21,21 @@ use std::fmt;
 
     literal -> NUMBER | true | false
     binary -> exp operator exp
-    operator -> "+" | "-" | "*" | "/" | "==" | "<" | ">" | "&" | "|"
-    grouping -> "(" exp ")"
+    operator -> '+' | '-' | '*' | '/' | '==' | '<' | '>' | '&' | '|'
+    grouping -> '(' exp ')'
 
     var -> 'var'
     let -> let 'var' = exp \n exp
-    ite -> boolean "then" exp "else" exp "end"
+    ite -> boolean 'then' exp 'else' exp 'end'
 
     (var is function name in this case)
-    call -> 'var'(p1, p2, ..)
+    call -> 'var'(a1, a2, ..)
 
-    comments -> "#"
+    (types)
+    int -> 'int'
+    bool -> 'bool'
+
+    comments -> '#'
 */
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +74,9 @@ pub enum TokenType {
     If,
     Then,
     Else,
+    // Types
+    Int,
+    Bool,
     // Parser
     Error(String),
 }

@@ -169,9 +169,14 @@ fn scan_identifier(scanner: &mut Scanner, current: char) -> Token {
 
     let keyword = match iter.next() {
         // one step
-        Some('i') => check_keyword(TokenType::If, scanner, &identifier, "if"),
         Some('l') => check_keyword(TokenType::Let, scanner, &identifier, "let"),
+        Some('b') => check_keyword(TokenType::Bool, scanner, &identifier, "bool"),
         // two step
+        Some('i') => match iter.next() {
+            Some('f') => check_keyword(TokenType::If, scanner, &identifier, "if"),
+            Some('n') => check_keyword(TokenType::Int, scanner, &identifier, "int"),
+            _ => None,
+        },
         Some('f') => match iter.next() {
             Some('u') => check_keyword(TokenType::Fun, scanner, &identifier, "fun"),
             Some('a') => check_keyword(TokenType::False, scanner, &identifier, "false"),
@@ -278,5 +283,10 @@ mod tests {
     #[test]
     fn call_fun() {
         println!("{:?}", scan("fun(1, 2)"))
+    }
+
+    #[test]
+    fn types() {
+        println!("{:?}", scan("int bla, bool bloop"))
     }
 }
