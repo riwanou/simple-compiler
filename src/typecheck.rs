@@ -2,6 +2,7 @@ use crate::syntax::{Def, Exp, Type};
 use std::{collections::HashMap, vec};
 
 pub struct FunInfo {
+    fun_type: Type,
     params: Vec<(Type, String)>,
     nb_locals: usize,
 }
@@ -33,8 +34,9 @@ pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, usize>, Vec<Strin
 
     // first pass, add functions definition
     program.iter().for_each(|def| match def {
-        Def::Fun(name, params, _) => {
+        Def::Fun(fun_type, name, params, _) => {
             let info = FunInfo {
+                fun_type: fun_type.to_owned(),
                 params: params.clone(),
                 nb_locals: 0,
             };
@@ -42,9 +44,17 @@ pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, usize>, Vec<Strin
         }
     });
 
-    // second pass, typecheck functions
+    // second pass, typecheck functions, collect errors
+    let mut errors = vec![];
     for def in program {
-        typecheck_def(&def, &mut env)?;
+        match typecheck_def(&def, &mut env) {
+            Ok(_) => (),
+            Err(err) => errors.push(err.iter().flat_map(|item| item.split('\n')).collect()),
+        };
+    }
+
+    if errors.len() > 0 {
+        return Err(errors);
     }
 
     let funs_locals = env
@@ -57,16 +67,28 @@ pub fn typecheck(program: &Vec<Def>) -> Result<HashMap<String, usize>, Vec<Strin
 
 pub fn typecheck_def(fun: &Def, env: &mut HashMap<String, FunInfo>) -> Result<(), Vec<String>> {
     match fun {
-        Def::Fun(name, _, body) => {
+        Def::Fun(fun_type, name, _, body) => {
             let fun = env
                 .get(name)
                 .expect("problem in typecheck, function not in env");
+
             let mut var_env: HashMap<String, Type> = fun
                 .params
                 .iter()
                 .map(|(p_type, p_var)| (p_var.to_string(), p_type.to_owned()))
                 .collect();
-            typecheck_exp(body, &mut var_env, env)?;
+
+            let infered_type = typecheck_exp(body, &mut var_env, env)?;
+
+            match assert_type(
+                &infered_type,
+                fun_type,
+                &format!("body of {} should have same type as declared", name),
+            ) {
+                Ok(_) => (),
+                Err(err) => return Err(vec![err]),
+            };
+
             env.get_mut(name).unwrap().nb_locals = var_env.len();
         }
     };
@@ -106,7 +128,7 @@ pub fn typecheck_exp(
             &mut errors,
         )?,
         // comparison
-        Exp::Sma(a, b) | Exp::Gta(a, b) | Exp::Eq(a, b) => {
+        Exp::Sma(a, b) | Exp::Gta(a, b) => {
             typecheck_binary(
                 a,
                 b,
@@ -116,6 +138,16 @@ pub fn typecheck_exp(
                 "mixing of numeric and other type in comparison",
                 &mut errors,
             )?;
+            Type::Bool
+        }
+        // equal (work for multiple types), return boolean
+        Exp::Eq(a, b) => {
+            let left = typecheck_exp(a, env, fun_env)?;
+            let right = typecheck_exp(b, env, fun_env)?;
+            collect_error(
+                &mut errors,
+                &assert_type(&left, &right, "mixing of different types in equality"),
+            );
             Type::Bool
         }
         // if then else
@@ -173,9 +205,9 @@ fn typecheck_let(
     let val_type = typecheck_exp(val, env, fun_env)?;
     env.insert(var.to_string(), val_type.clone());
     // check body with modified env
-    typecheck_exp(body, env, fun_env)?;
+    let body_type = typecheck_exp(body, env, fun_env)?;
     // return variable type
-    Ok(val_type)
+    Ok(body_type)
 }
 
 // assign
@@ -288,7 +320,7 @@ fn typecheck_call(
         );
     }
 
-    Ok(Type::Int)
+    Ok(fun_info.fun_type.to_owned())
 }
 
 #[cfg(test)]
@@ -299,7 +331,7 @@ mod tests {
 
     #[test]
     pub fn add() {
-        let tokens = scan("fun main() 1 + 1 + true end").unwrap();
+        let tokens = scan("int main() 1 + 1 + true end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -311,7 +343,7 @@ mod tests {
 
     #[test]
     pub fn and() {
-        let tokens = scan("fun main() true & 1 & true end").unwrap();
+        let tokens = scan("int main() true & 1 & true end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -323,7 +355,7 @@ mod tests {
 
     #[test]
     pub fn comparison() {
-        let tokens = scan("fun main() true & 1 + 2 < true & 2 == 2 end").unwrap();
+        let tokens = scan("int main() true & 1 + 2 < true & 2 == 2 end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -335,7 +367,7 @@ mod tests {
 
     #[test]
     pub fn non_defined_var() {
-        let tokens = scan("fun main() let foo = 2 \n fee end").unwrap();
+        let tokens = scan("int main() let foo = 2 \n fee end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -345,7 +377,7 @@ mod tests {
 
     #[test]
     pub fn assign_var() {
-        let tokens = scan("fun main() let foo = 2 \n foo = true \n foo end").unwrap();
+        let tokens = scan("int main() let foo = 2 \n foo = true \n foo end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -355,7 +387,7 @@ mod tests {
 
     #[test]
     pub fn ite_mismatch() {
-        let tokens = scan("fun main() if true then 1 else false end end").unwrap();
+        let tokens = scan("int main() if true then 1 else false end end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -367,7 +399,7 @@ mod tests {
 
     #[test]
     pub fn call_inexistent() {
-        let tokens = scan("fun main() foo() end fun fee(int n) n end").unwrap();
+        let tokens = scan("int main() foo() end int fee(int n) n end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -377,7 +409,7 @@ mod tests {
 
     #[test]
     pub fn call_mismatch() {
-        let tokens = scan("fun main() foo() end fun foo(int n) n end").unwrap();
+        let tokens = scan("int main() foo() end int foo(int n) n end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
@@ -389,12 +421,12 @@ mod tests {
 
     #[test]
     pub fn param_type() {
-        let tokens = scan("fun main() foo(true) end fun foo(int n) n end").unwrap();
+        let tokens = scan("int main() foo(true) end int foo(int n) n end").unwrap();
         let program = parse(&tokens).unwrap();
         assert_eq!(
             typecheck(&program),
             Err(vec!(type_error(
-                "same type expected for parameter and argument: foo"
+                "same type expected for parameter and argument: n in foo"
             )))
         );
     }

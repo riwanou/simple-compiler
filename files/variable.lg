@@ -1,7 +1,7 @@
 # variable file
 # return 24
 
-fun main()
+int main()
     let b = 10
     b = (b + 2) * 2
     b

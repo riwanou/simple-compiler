@@ -1,0 +1,10 @@
+# simple file
+
+int main()
+    let a = fee() & true
+    0
+end
+
+bool fee()
+    true
+end

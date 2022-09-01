@@ -3,17 +3,17 @@
 # need main function as entry point
 # return 46 
 
-fun foo()
+int foo()
     fee()
 end
 
-fun fee()
+int fee()
     let num = if true then 2 else 1 end
     num = num * 10
     num
 end
 
-fun main()
+int main()
     let num = foo()
     if num > 2 then  
         (num + 3) * 2

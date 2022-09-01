@@ -1,11 +1,11 @@
 # function with parameter
 # should return 720
 
-fun main()
+int main()
     fact(6, 1)
 end
 
-fun fact(int n, int one)
+int fact(int n, int one)
     if n == 1 | n < 1 then
         one
     else

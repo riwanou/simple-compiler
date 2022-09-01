@@ -7,7 +7,8 @@ use std::fmt;
     program -> [def]
 
     (function definition)
-    def -> 'fun' var(int p1, bool p2, ..) exp 'end'
+    (function type infered in call)
+    def -> type var(type var, type var, ..) exp 'end' type
 
     /!\ - [value expression have to be inline]
     (expression)
@@ -31,7 +32,7 @@ use std::fmt;
     (var is function name in this case)
     call -> 'var'(a1, a2, ..)
 
-    (types)
+    (type)
     int -> 'int'
     bool -> 'bool'
 
@@ -64,7 +65,6 @@ pub enum TokenType {
     LeftParen,
     RightParen,
     // Function
-    Fun,
     Call(String, Vec<Exp>),
     Comma,
     // End

@@ -53,7 +53,7 @@ pub fn codegen(program: &Vec<Def>, localsnb_table: &HashMap<String, usize>) -> V
     for i in 0..program.len() {
         functions.function(fun_env.counter);
         match program[i].to_owned() {
-            Def::Fun(name, params, _) => {
+            Def::Fun(_, name, params, _) => {
                 types.function(vec![ValType::I32; params.len()], vec![ValType::I32]);
                 fun_env.add(&name);
             }
@@ -91,7 +91,7 @@ pub fn codegen(program: &Vec<Def>, localsnb_table: &HashMap<String, usize>) -> V
 // each function has it own environment
 pub fn codegen_fun(f: Def, fun_env: &Env, localsnb_table: &HashMap<String, usize>) -> Function {
     match f {
-        Def::Fun(name, param, body) => {
+        Def::Fun(_, name, param, body) => {
             // generate function
             let nb_locals = *localsnb_table.get(&name).unwrap();
             let locals = vec![(nb_locals as u32, ValType::I32)];
@@ -234,6 +234,7 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(
                 &mut vec!(d_fun(
+                    Type::Int,
                     "main",
                     &vec![],
                     d_add(Num(10), d_add(Num(20), Num(5))),
@@ -255,7 +256,12 @@ mod tests {
     fn ite() {
         assert_eq!(
             print_bytes(&codegen(
-                &vec!(d_fun("main", &vec![], d_ite(Bool(false), Num(1), Num(2)),)),
+                &vec!(d_fun(
+                    Type::Int,
+                    "main",
+                    &vec![],
+                    d_ite(Bool(false), Num(1), Num(2)),
+                )),
                 &HashMap::from([("main".into(), 0)])
             ))
             .unwrap(),
@@ -275,6 +281,7 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(
                 &vec!(d_fun(
+                    Type::Int,
                     "main",
                     &vec![],
                     d_let("a", Num(1), Var("a".to_string())),
@@ -295,8 +302,8 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(
                 &vec!(
-                    d_fun("main", &vec![], Num(1)),
-                    d_fun("foo", &vec![], Num(2))
+                    d_fun(Type::Int, "main", &vec![], Num(1)),
+                    d_fun(Type::Int, "foo", &vec![], Num(2))
                 ),
                 &HashMap::from([("main".into(), 0), ("foo".into(), 0)])
             ))
@@ -318,8 +325,8 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(
                 &vec!(
-                    d_fun("main", &vec![], d_call("foo", &vec![])),
-                    d_fun("foo", &vec![], Num(2))
+                    d_fun(Type::Int, "main", &vec![], d_call("foo", &vec![])),
+                    d_fun(Type::Int, "foo", &vec![], Num(2))
                 ),
                 &HashMap::from([("main".into(), 0), ("foo".into(), 0)])
             ))
@@ -341,8 +348,13 @@ mod tests {
         assert_eq!(
             print_bytes(&codegen(
                 &vec!(
-                    d_fun("main", &vec![], d_call("foo", &vec!(Num(1)))),
-                    d_fun("foo", &vec!((Type::Int, "num".into())), d_var("num"))
+                    d_fun(Type::Int, "main", &vec![], d_call("foo", &vec!(Num(1)))),
+                    d_fun(
+                        Type::Int,
+                        "foo",
+                        &vec!((Type::Int, "num".into())),
+                        d_var("num")
+                    )
                 ),
                 &HashMap::from([("main".into(), 0), ("foo".into(), 1)])
             ))

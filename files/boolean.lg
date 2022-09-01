@@ -1,7 +1,12 @@
 # boolean operations file
-#(false & (true | true)) | true # true
+# return 0
 
-fun main()
+int main()
     # false
-    (1 < 2) & (2 == 2) & (3 > 2) & false
+    let foo = (1 < 2) & (2 == 2) & (3 > 2) & false
+    if foo == false then
+        0
+    else
+        1
+    end
 end

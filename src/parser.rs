@@ -68,7 +68,11 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Def>, Vec<String>> {
                 Some(def) => {
                     // search for entry point "main"
                     match def.clone() {
-                        Def::Fun(name, param, _) if name == "main" => {
+                        Def::Fun(fun_type, name, param, _) if name == "main" => {
+                            // main function type should be int
+                            if !matches!(fun_type, Type::Int) {
+                                errors.push(parse_error("main function should be type int"));
+                            }
                             // main function should not have parameters
                             if param.len() > 0 {
                                 errors
@@ -206,12 +210,11 @@ fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String
         return Ok(None);
     }
 
-    // fun keyword
-    eat_token(
-        &TokenType::Fun,
-        "missing token 'fun' in function declaration",
-        iterator,
-    )?;
+    // type of function
+    let fun_type = match parse_type(iterator) {
+        Some(res) => res,
+        None => return Err(parse_error("function missing type at begining")),
+    };
     eat_newline(iterator);
 
     // get function name
@@ -261,7 +264,12 @@ fn parse_def(iterator: &mut Peekable<Iter<Token>>) -> Result<Option<Def>, String
         iterator,
     )?;
 
-    Ok(Some(Def::Fun(fun_name.to_string(), params, Box::new(body))))
+    Ok(Some(Def::Fun(
+        fun_type.to_owned(),
+        fun_name.to_string(),
+        params,
+        Box::new(body),
+    )))
 }
 
 // parse expression
@@ -281,7 +289,7 @@ fn parse_exp(iterator: &mut Peekable<Iter<Token>>) -> Result<Exp, String> {
                     parse_boolean(iterator, Some(token_type.clone()))
                 }
                 TokenType::If => parse_ite(iterator),
-                _ => return Err(parse_error("invalid expression at beginning")),
+                _ => return Err(parse_error("empty expression")),
             };
         } else {
             return Err(parse_error("Nothing to parse"));
@@ -755,25 +763,34 @@ mod tests {
 
     #[test]
     fn nums() {
-        let tokens = scan("fun main() 10 end").unwrap();
-        assert_eq!(parse(&tokens), Ok(vec!(d_fun("main", &vec![], Num(10)))))
+        let tokens = scan("int main() 10 end").unwrap();
+        assert_eq!(
+            parse(&tokens),
+            Ok(vec!(d_fun(Type::Int, "main", &vec![], Num(10))))
+        )
     }
 
     #[test]
     fn sub() {
-        let tokens = scan("fun main() 10 - 5 end").unwrap();
+        let tokens = scan("int main() 10 - 5 end").unwrap();
         assert_eq!(
             parse(&tokens),
-            Ok(vec!(d_fun("main", &vec![], d_sub(Num(10), Num(5)))))
+            Ok(vec!(d_fun(
+                Type::Int,
+                "main",
+                &vec![],
+                d_sub(Num(10), Num(5))
+            )))
         )
     }
 
     #[test]
     fn boolean() {
-        let tokens = scan("fun main() true & (false | true) end").unwrap();
+        let tokens = scan("int main() true & (false | true) end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
+                Type::Int,
                 "main",
                 &vec![],
                 d_and(Bool(true), d_or(Bool(false), Bool(true))),
@@ -783,10 +800,11 @@ mod tests {
 
     #[test]
     fn binary_bool() {
-        let tokens = scan("fun main() 1 < 2 & 2 + 1 == 2 & 3> 2 end").unwrap();
+        let tokens = scan("int main() 1 < 2 & 2 + 1 == 2 & 3> 2 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
+                Type::Int,
                 "main",
                 &vec![],
                 d_and(
@@ -799,10 +817,11 @@ mod tests {
 
     #[test]
     fn numerics_op() {
-        let tokens = scan("fun main() (2 * 1 + 2) / 2 end").unwrap();
+        let tokens = scan("int main() (2 * 1 + 2) / 2 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
+                Type::Int,
                 "main",
                 &vec![],
                 d_div(d_add(d_mult(Num(2), Num(1)), Num(2)), Num(2)),
@@ -813,11 +832,12 @@ mod tests {
     #[test]
     fn ite() {
         let tokens =
-            scan("fun main\n (\n ) \n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end end")
+            scan("int main\n (\n ) \n \n if \n 1 < 2 \n then \n 1 \n else \n 2 \n \n end end")
                 .unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
+                Type::Int,
                 "main",
                 &vec![],
                 d_ite(d_sma(Num(1), Num(2)), Num(1), Num(2)),
@@ -827,10 +847,11 @@ mod tests {
 
     #[test]
     fn var() {
-        let tokens = scan("fun main() let a \n = \n 1 + 2 \n a = a + 2 \n a end").unwrap();
+        let tokens = scan("int main() let a \n = \n 1 + 2 \n a = a + 2 \n a end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
+                Type::Int,
                 "main",
                 &vec![],
                 d_let(
@@ -848,34 +869,40 @@ mod tests {
 
     #[test]
     fn fun() {
-        let tokens = scan("fun a() 1 end fun main() let a = 1 \n a end").unwrap();
+        let tokens = scan("int a() 1 end int main() let a = 1 \n a end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", &vec![], d_let("a", Num(1), d_var("a"))),
-                d_fun("a", &vec![], Num(1))
+                d_fun(Type::Int, "main", &vec![], d_let("a", Num(1), d_var("a"))),
+                d_fun(Type::Int, "a", &vec![], Num(1))
             ))
         )
     }
 
     #[test]
     fn call_fun() {
-        let tokens = scan("fun a() 1 end fun main() a() + 1 end").unwrap();
+        let tokens = scan("int a() 1 end int main() a() + 1 end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", &vec![], d_add(d_call("a", &vec![]), Num(1))),
-                d_fun("a", &vec![], Num(1))
+                d_fun(
+                    Type::Int,
+                    "main",
+                    &vec![],
+                    d_add(d_call("a", &vec![]), Num(1))
+                ),
+                d_fun(Type::Int, "a", &vec![], Num(1))
             ))
         )
     }
 
     #[test]
     fn fun_par() {
-        let tokens = scan("\nfun \nmain\n(\n\n)\n main(\n1\n,\n2\n) + fee \n end").unwrap();
+        let tokens = scan("\nint \nmain\n(\n\n)\n main(\n1\n,\n2\n) + fee \n end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(d_fun(
+                Type::Int,
                 "main",
                 &vec![],
                 d_add(d_call("main", &vec!(Num(1), Num(2))), d_var("fee")),
@@ -886,12 +913,18 @@ mod tests {
     #[test]
     fn simple_type() {
         let tokens =
-            scan("fun main() fee(10, true) end fun fee(\nint\n a\n, bool b) a end").unwrap();
+            scan("int main() fee(10, true) end int fee(\nint\n a\n, bool b) a end").unwrap();
         assert_eq!(
             parse(&tokens),
             Ok(vec!(
-                d_fun("main", &vec![], d_call("fee", &vec!(Num(10), Bool(true)))),
                 d_fun(
+                    Type::Int,
+                    "main",
+                    &vec![],
+                    d_call("fee", &vec!(Num(10), Bool(true)))
+                ),
+                d_fun(
+                    Type::Int,
                     "fee",
                     &vec!((Type::Int, "a".into()), (Type::Bool, "b".into())),
                     d_var("a")
