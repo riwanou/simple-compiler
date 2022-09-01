@@ -1,0 +1,23 @@
+# example file
+# return 23 
+# when is_null is true, return 3
+
+int main()
+    let is_null = true
+    let var = (foo(is_null, 5*2, 0-10) + 1) * 2
+    var = var + 2 / 2
+    var
+end
+
+int foo(bool null, int res1, int res2)
+    if null then
+        0
+    else
+        let boolean = if fee() then res1 else res2 end
+        boolean
+    end
+end
+
+bool fee()
+    (1 < 2 & 4-2 > 3) == false & true 
+end
