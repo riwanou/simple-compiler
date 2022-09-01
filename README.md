@@ -27,7 +27,7 @@ cargo test -- --nocapture
 
 - All programs must have a `main` entry point function, it has to be type `int`
 - All numerics are 32 bit integer, boolean are compiled as `0` or `1` 
-- There is 2 types: `int` and `bool`
+- There are 2 types: `int` and `bool`
 - `let` and `=` body are defined by the next line underneath *at least one line break*
 - Everything except definition (function) are expressions
 
