@@ -1,40 +1,49 @@
-# Rewrite in Rust
+# Simple compiler in Rust
 
-The goal of this project is to reproduce the compiler in Rust. \
-The compiler backend is [WebAssembly](https://webassembly.org/).
+Simple rust compiler with a backend targeting [WebAssembly](https://webassembly.org/).
 
-## Librairies used
+## Overview
 
-- [wasm-tools](https://github.com/bytecodealliance/wasm-tools) (bytecodealliance) 
-  - wasm-encoder for code generation 
-  - wasmi for the interpreter
-  - helpers
+- `scanner`: Converts source code into tokens.
+- `syntax`: Contains language constructs.
+- `parser`: Builds an abstract syntax tree (AST) from tokens.
+- `typecheck`: Ensures type correctness of the AST.
+- `codegen`: Generates WebAssembly code from on the AST.
+
+## Libraries used
+
+- [wasm-tools](https://github.com/bytecodealliance/wasm-tools) (by Bytecode Alliance) 
+  - wasm-encoder for code generation.
+  - wasmi for the interpreter.
+  - helper functions.
 - [pretty_assertions](https://github.com/rust-pretty-assertions/rust-pretty-assertions) (for colored test diffs)
 
 ## Commands
 
-- run a `.lg` file
+- Compile and run a `.lg` file:
+
 ```bash
 cargo run -- filename.lg
 ```
 
-- run all tests (nocapture should be used for scanner test)
+- Run all the tests (nocapture is used for scanner test):
+
 ```bash
 cargo test -- --nocapture
 ```
 
 ## Basics
 
-- All programs must have a `main` entry point function, it has to be type `int`
-- All numerics are 32 bit integer, boolean are compiled as `0` or `1` 
-- There are 2 types: `int` and `bool`
-- `let` and `=` body are defined by the next line underneath *at least one line break*
-- Everything except definition (function) are expressions
-
+- Every programs must have a `main` entry point function, returning an `int`.
+- Numeric types are 32-bit integers, booleans are compiled as `0` or `1`.
+- Types: `int` and `bool`.
+- `let` and `=` body are defined by the next underneath line, *at least one line break*.
+- Everything except functions are expressions.
 
 ## Example
 
-- return `23`, when `is_null` is true, return `3`
+- Returns `3` if `is_null` is true, otherwise returns `3`:
+
 ```
 int main()
     let is_null = true
